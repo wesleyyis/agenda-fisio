@@ -370,3 +370,60 @@ function newPass(){
   var r=await sb.auth.updateUser({password:v});if(r.error){$("np-err").textContent=errMsg(r.error);$("np-err").hidden=false;return}closeModal();toast("Senha atualizada.")}}
 try{init()}catch(e){var bx=$("boot");if(bx){bx.hidden=false;bx.innerHTML="<b>Erro ao iniciar</b><br><small>"+esc(errMsg(e))+"</small>"}}
 })();
+
+/* ===== Tela de login: abas, olho da senha e efeito de erro ===== */
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var form=$("authform"),tabs=$("auth-tabs");
+  if(!form||!tabs||!$("namebox")||!$("pwbox")||!$("auth-sw"))return;
+
+  var TXT={
+    login:["Bem-vindo de volta","👋","Entre na sua agenda"],
+    signup:["Crie sua conta","✨","Comece a organizar seus atendimentos"],
+    forgot:["Recuperar senha","🔑","Enviaremos um link para o seu e-mail"]
+  };
+  var last="";
+
+  /* descobre em que modo o app.js deixou o formulário */
+  function current(){return !$("namebox").hidden?"signup":$("pwbox").hidden?"forgot":"login"}
+
+  function sync(){
+    var m=current();if(m===last)return;
+    var first=!last;last=m;
+    tabs.setAttribute("data-mode",m==="signup"?"signup":"login");
+    $("tab-login").setAttribute("aria-selected",String(m!=="signup"));
+    $("tab-signup").setAttribute("aria-selected",String(m==="signup"));
+    var t=TXT[m],h=$("auth-head");
+    $("auth-title").innerHTML=t[0]+' <span class="ap-wave">'+t[1]+'</span>';
+    $("auth-sub").textContent=t[2];
+    if(!first){h.classList.remove("swap");void h.offsetWidth;h.classList.add("swap")}
+  }
+
+  /* as abas apenas "clicam" no botão que o app.js já usa para trocar de modo */
+  $("tab-login").onclick=function(){if(current()!=="login")$("auth-sw").click()};
+  $("tab-signup").onclick=function(){
+    var c=current();if(c==="signup")return;
+    $("auth-sw").click();            /* login -> cadastro (ou recuperar -> login) */
+    if(c==="forgot")$("auth-sw").click(); /* recuperar -> login -> cadastro */
+  };
+
+  new MutationObserver(sync).observe(form,{subtree:true,attributes:true,attributeFilter:["hidden"]});
+  sync();
+
+  /* olho para mostrar/ocultar a senha */
+  var eye=$("pw-eye");
+  if(eye)eye.onclick=function(){
+    var i=$("pw"),show=i.type==="password";
+    i.type=show?"text":"password";
+    eye.setAttribute("aria-pressed",String(show));
+    eye.setAttribute("aria-label",show?"Ocultar senha":"Mostrar senha");
+  };
+
+  /* o formulário balança quando aparece uma mensagem de erro */
+  var msg=$("auth-msg");
+  new MutationObserver(function(){
+    if(!msg.hidden&&/\berr\b/.test(msg.className)){
+      form.classList.remove("shake");void form.offsetWidth;form.classList.add("shake");
+    }
+  }).observe(msg,{attributes:true,childList:true,characterData:true,subtree:true});
+})();
