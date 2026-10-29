@@ -1,0 +1,25 @@
+{
+  "name": "Minha Agenda",
+  "short_name": "Agenda",
+  "description": "Gestão de pacientes, sessões e lembretes com notificações push.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#04060d",
+  "theme_color": "#04060d",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

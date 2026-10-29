@@ -1,120 +1,368 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#04060d">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Minha Agenda">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="format-detection" content="telephone=no">
-<title>Minha Agenda</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f766e'/%3E%3Crect x='14' y='16' width='36' height='34' rx='6' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M14 28h36M24 11v10M40 11v10' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-<div id="boot" style="margin:24px auto;max-width:560px;padding:18px;border-radius:14px;background:#fff;color:#111;font:16px/1.5 system-ui,sans-serif;border:1px solid #ccc">
- <b>Carregando…</b><br>
- <small>Se esta mensagem não sumir, o navegador não encontrou <b>css/style.css</b> e <b>js/app.js</b>. As pastas <b>css</b> e <b>js</b> precisam ficar ao lado do <b>index.html</b>, e o site deve ser aberto pelo Live Server (veja o LEIA-ME).</small>
-</div>
-<noscript><div style="margin:24px auto;max-width:560px;padding:18px;background:#fff;color:#111;font:16px system-ui">Ative o JavaScript para usar a Minha Agenda.</div></noscript>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
-<symbol id="usr" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M17 4a4 4 0 010 8M22 21c0-3-2-5-4-5.6"/></symbol>
-<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-<symbol id="bel" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></symbol>
-<symbol id="chl" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
-<symbol id="chr" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
-<symbol id="chk" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
-<symbol id="clk" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
-<symbol id="xx" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
-<symbol id="rep" viewBox="0 0 24 24"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></symbol>
-<symbol id="pen" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></symbol>
-<symbol id="trs" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></symbol>
-<symbol id="out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
-<symbol id="und" viewBox="0 0 24 24"><path d="M3 7v6h6M3.5 13A9 9 0 105.6 6.3L3 9"/></symbol>
-</defs></svg>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#04060d" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Minha Agenda" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Minha Agenda</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f766e'/%3E%3Crect x='14' y='16' width='36' height='34' rx='6' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M14 28h36M24 11v10M40 11v10' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      media="print"
+      onload="this.media = 'all'"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="manifest" href="/manifest.json" />
+  </head>
+  <body>
+    <div
+      id="boot"
+      style="
+        margin: 24px auto;
+        max-width: 560px;
+        padding: 18px;
+        border-radius: 14px;
+        background: #fff;
+        color: #111;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        border: 1px solid #ccc;
+      "
+    >
+      <b>Carregando…</b><br />
+      <small
+        >Se esta mensagem não sumir, o navegador não encontrou
+        <b>css/style.css</b> e <b>js/app.js</b>. As pastas <b>css</b> e
+        <b>js</b> precisam ficar ao lado do <b>index.html</b>, e o site deve ser
+        aberto pelo Live Server (veja o LEIA-ME).</small
+      >
+    </div>
+    <noscript
+      ><div
+        style="
+          margin: 24px auto;
+          max-width: 560px;
+          padding: 18px;
+          background: #fff;
+          color: #111;
+          font: 16px system-ui;
+        "
+      >
+        Ative o JavaScript para usar a Minha Agenda.
+      </div></noscript
+    >
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="cal" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="18" rx="3" />
+          <path d="M16 2v4M8 2v4M3 10h18" />
+        </symbol>
+        <symbol id="usr" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="4" />
+          <path
+            d="M2 21c0-4 3-6 7-6s7 2 7 6M17 4a4 4 0 010 8M22 21c0-3-2-5-4-5.6"
+          />
+        </symbol>
+        <symbol id="plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </symbol>
+        <symbol id="bel" viewBox="0 0 24 24">
+          <path
+            d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"
+          />
+        </symbol>
+        <symbol id="chl" viewBox="0 0 24 24">
+          <path d="M15 18l-6-6 6-6" />
+        </symbol>
+        <symbol id="chr" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" /></symbol>
+        <symbol id="chk" viewBox="0 0 24 24">
+          <path d="M20 6L9 17l-5-5" />
+        </symbol>
+        <symbol id="clk" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        </symbol>
+        <symbol id="xx" viewBox="0 0 24 24">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </symbol>
+        <symbol id="rep" viewBox="0 0 24 24">
+          <path
+            d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"
+          />
+        </symbol>
+        <symbol id="pen" viewBox="0 0 24 24">
+          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+        </symbol>
+        <symbol id="trs" viewBox="0 0 24 24">
+          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+        </symbol>
+        <symbol id="out" viewBox="0 0 24 24">
+          <path
+            d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
+          />
+        </symbol>
+        <symbol id="und" viewBox="0 0 24 24">
+          <path d="M3 7v6h6M3.5 13A9 9 0 105.6 6.3L3 9" />
+        </symbol>
+      </defs>
+    </svg>
 
-<!-- ======== LOGIN ======== -->
-<div id="auth" class="auth" hidden>
- <div class="ap-bg" aria-hidden="true"><i class="ap-glow g1"></i><i class="ap-glow g2"></i><i class="ap-glow g3"></i><span class="ap-dots"></span></div>
- <div class="ap-wrap">
+    <!-- ======== LOGIN ======== -->
+    <div id="auth" class="auth" hidden>
+      <div class="ap-bg" aria-hidden="true">
+        <i class="ap-glow g1"></i><i class="ap-glow g2"></i
+        ><i class="ap-glow g3"></i><span class="ap-dots"></span>
+      </div>
+      <div class="ap-wrap">
+        <div class="ap-left">
+          <div class="ap-brand">
+            <div class="ap-logo">A</div>
+            <div>
+              <div class="ap-name">AgendaPro</div>
+              <div class="ap-tag">GESTÃO DE SESSÕES</div>
+            </div>
+          </div>
+          <h2 class="ap-headline">
+            Organize sua agenda<span>profissional completa</span>
+          </h2>
+          <p class="ap-desc">
+            Controle atendimentos, pacientes, pacotes de sessões e lembretes em
+            um só lugar.
+          </p>
+          <ul class="ap-features">
+            <li><span class="ap-ico">📅</span>Agenda por dia e por mês</li>
+            <li>
+              <span class="ap-ico">👥</span>Pacientes com pacotes de sessões
+            </li>
+            <li><span class="ap-ico">🔔</span>Lembretes de atendimento</li>
+            <li>
+              <span class="ap-ico">📋</span>Histórico de sessões realizadas
+            </li>
+            <li>
+              <span class="ap-ico">📱</span>Funciona no celular e no computador
+            </li>
+          </ul>
+        </div>
 
-  <div class="ap-left">
-   <div class="ap-brand"><div class="ap-logo">A</div><div><div class="ap-name">AgendaPro</div><div class="ap-tag">GESTÃO DE SESSÕES</div></div></div>
-   <h2 class="ap-headline">Organize sua agenda<span>profissional completa</span></h2>
-   <p class="ap-desc">Controle atendimentos, pacientes, pacotes de sessões e lembretes em um só lugar.</p>
-   <ul class="ap-features">
-    <li><span class="ap-ico">📅</span>Agenda por dia e por mês</li>
-    <li><span class="ap-ico">👥</span>Pacientes com pacotes de sessões</li>
-    <li><span class="ap-ico">🔔</span>Lembretes de atendimento</li>
-    <li><span class="ap-ico">📋</span>Histórico de sessões realizadas</li>
-    <li><span class="ap-ico">📱</span>Funciona no celular e no computador</li>
-   </ul>
-  </div>
+        <div class="ap-right">
+          <div class="ap-card">
+            <div class="ap-head" id="auth-head">
+              <h2 id="auth-title">
+                Bem-vindo de volta <span class="ap-wave">👋</span>
+              </h2>
+              <p id="auth-sub">Entre na sua agenda</p>
+            </div>
 
-  <div class="ap-right">
-   <div class="ap-card">
-    <div class="ap-head" id="auth-head"><h2 id="auth-title">Bem-vindo de volta <span class="ap-wave">👋</span></h2><p id="auth-sub">Entre na sua agenda</p></div>
+            <div
+              class="ap-tabs"
+              id="auth-tabs"
+              data-mode="login"
+              role="tablist"
+              aria-label="Acesso"
+            >
+              <button
+                type="button"
+                role="tab"
+                id="tab-login"
+                aria-selected="true"
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="tab-signup"
+                aria-selected="false"
+              >
+                Criar Conta
+              </button>
+            </div>
 
-    <div class="ap-tabs" id="auth-tabs" data-mode="login" role="tablist" aria-label="Acesso">
-     <button type="button" role="tab" id="tab-login" aria-selected="true">Entrar</button>
-     <button type="button" role="tab" id="tab-signup" aria-selected="false">Criar Conta</button>
+            <form class="ap-form" id="authform" novalidate>
+              <div class="ap-field" id="namebox" hidden>
+                <label for="nm">Como você gostaria de ser chamado?</label
+                ><input
+                  id="nm"
+                  name="name"
+                  type="text"
+                  autocomplete="nickname"
+                  maxlength="60"
+                  placeholder="Seu nome ou apelido"
+                />
+              </div>
+              <div class="ap-field">
+                <label for="em">E-mail</label
+                ><input
+                  id="em"
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  inputmode="email"
+                  maxlength="254"
+                  placeholder="voce@email.com"
+                  required
+                />
+              </div>
+              <div class="ap-field" id="pwbox">
+                <label for="pw">Senha</label>
+                <div class="ap-pw">
+                  <input
+                    id="pw"
+                    name="password"
+                    type="password"
+                    autocomplete="current-password"
+                    maxlength="128"
+                    placeholder="Sua senha"
+                  /><button
+                    type="button"
+                    class="ap-eye"
+                    id="pw-eye"
+                    aria-label="Mostrar senha"
+                    aria-pressed="false"
+                  >
+                    <svg
+                      class="eye"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"
+                      />
+                      <circle cx="12" cy="12" r="3" /></svg
+                    ><svg
+                      class="eye-off"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M17.9 17.9A10.9 10.9 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 4.1-5.1M9.9 5.2A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a18.6 18.6 0 0 1-2.2 3.2M1 1l22 22"
+                      />
+                      <path d="M14.1 14.1a3 3 0 0 1-4.2-4.2" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div
+                id="auth-msg"
+                class="hint"
+                role="status"
+                aria-live="polite"
+                hidden
+              ></div>
+              <button class="ap-submit" id="auth-go" type="submit">
+                Entrar
+              </button>
+              <div class="ap-links">
+                <button type="button" class="ap-link" id="auth-forgot">
+                  Esqueci minha senha
+                </button>
+                <button type="button" class="ap-link" id="auth-sw">
+                  Criar conta
+                </button>
+              </div>
+            </form>
+
+            <p class="ap-note">
+              🔒 Cada conta vê somente os próprios pacientes
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <form class="ap-form" id="authform" novalidate>
-     <div class="ap-field" id="namebox" hidden><label for="nm">Como você gostaria de ser chamado?</label><input id="nm" name="name" type="text" autocomplete="nickname" maxlength="60" placeholder="Seu nome ou apelido"></div>
-     <div class="ap-field"><label for="em">E-mail</label><input id="em" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" placeholder="voce@email.com" required></div>
-     <div class="ap-field" id="pwbox"><label for="pw">Senha</label><div class="ap-pw"><input id="pw" name="password" type="password" autocomplete="current-password" maxlength="128" placeholder="Sua senha"><button type="button" class="ap-eye" id="pw-eye" aria-label="Mostrar senha" aria-pressed="false"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 4.1-5.1M9.9 5.2A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a18.6 18.6 0 0 1-2.2 3.2M1 1l22 22"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/></svg></button></div></div>
-     <div id="auth-msg" class="hint" role="status" aria-live="polite" hidden></div>
-     <button class="ap-submit" id="auth-go" type="submit">Entrar</button>
-     <div class="ap-links">
-      <button type="button" class="ap-link" id="auth-forgot">Esqueci minha senha</button>
-      <button type="button" class="ap-link" id="auth-sw">Criar conta</button>
-     </div>
-    </form>
+    <!-- ======== APP ======== -->
+    <div id="app" hidden>
+      <aside class="side">
+        <div class="brand">
+          <span
+            ><svg class="i"><use href="#cal" /></svg></span
+          >Minha Agenda
+        </div>
+        <button class="nav" data-nav="agenda">
+          <svg class="i"><use href="#cal" /></svg>Agenda
+        </button>
+        <button class="nav" data-nav="pacientes">
+          <svg class="i"><use href="#usr" /></svg>Pacientes
+        </button>
+        <div class="who" id="who"></div>
+        <button class="nav" id="btn-out-d">
+          <svg class="i"><use href="#out" /></svg>Sair
+        </button>
+      </aside>
+      <div class="main">
+        <header class="top">
+          <div id="back-slot"></div>
+          <div style="flex: 1; min-width: 0">
+            <div class="sub" id="greet"></div>
+            <h1 id="ttl"></h1>
+          </div>
+          <div
+            id="acts"
+            style="display: flex; gap: 8px; align-items: center"
+          ></div>
+        </header>
+        <div class="scroll" id="scroll"><div class="wrap" id="view"></div></div>
+        <nav class="tabs" aria-label="Navegação">
+          <button data-nav="agenda">
+            <svg class="i"><use href="#cal" /></svg>Agenda
+          </button>
+          <button data-nav="pacientes">
+            <svg class="i"><use href="#usr" /></svg>Pacientes
+          </button>
+        </nav>
+      </div>
+      <button class="fab" id="fab">
+        <svg class="i"><use href="#plus" /></svg>Novo
+      </button>
+    </div>
 
-    <p class="ap-note">🔒 Cada conta vê somente os próprios pacientes</p>
-   </div>
-  </div>
+    <div id="modal" role="dialog" aria-modal="true"></div>
+    <div class="toast" id="toast" role="status"></div>
 
- </div>
-</div>
+    <div
+      id="setup"
+      hidden
+      style="padding: 28px; max-width: 640px; margin: 0 auto"
+    >
+      <h1>Configuração pendente</h1>
+      <p>
+        Abra o arquivo <b>js/config.js</b> e preencha
+        <code>SUPABASE_URL</code> e <code>SUPABASE_KEY</code>. O passo a passo
+        está no <b>LEIA-ME.md</b>.
+      </p>
+    </div>
 
-<!-- ======== APP ======== -->
-<div id="app" hidden>
- <aside class="side">
-  <div class="brand"><span><svg class="i"><use href="#cal"/></svg></span>Minha Agenda</div>
-  <button class="nav" data-nav="agenda"><svg class="i"><use href="#cal"/></svg>Agenda</button>
-  <button class="nav" data-nav="pacientes"><svg class="i"><use href="#usr"/></svg>Pacientes</button>
-  <div class="who" id="who"></div>
-  <button class="nav" id="btn-out-d"><svg class="i"><use href="#out"/></svg>Sair</button>
- </aside>
- <div class="main">
-  <header class="top"><div id="back-slot"></div><div style="flex:1;min-width:0"><div class="sub" id="greet"></div><h1 id="ttl"></h1></div><div id="acts" style="display:flex;gap:8px;align-items:center"></div></header>
-  <div class="scroll" id="scroll"><div class="wrap" id="view"></div></div>
-  <nav class="tabs" aria-label="Navegação">
-   <button data-nav="agenda"><svg class="i"><use href="#cal"/></svg>Agenda</button>
-   <button data-nav="pacientes"><svg class="i"><use href="#usr"/></svg>Pacientes</button>
-  </nav>
- </div>
- <button class="fab" id="fab"><svg class="i"><use href="#plus"/></svg>Novo</button>
-</div>
-
-<div id="modal" role="dialog" aria-modal="true"></div>
-<div class="toast" id="toast" role="status"></div>
-
-<div id="setup" hidden style="padding:28px;max-width:640px;margin:0 auto">
- <h1>Configuração pendente</h1>
- <p>Abra o arquivo <b>js/config.js</b> e preencha <code>SUPABASE_URL</code> e <code>SUPABASE_KEY</code>. O passo a passo está no <b>LEIA-ME.md</b>.</p>
-</div>
-
-<script src="js/boot.js"></script>
-<script src="js/vendor/supabase.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/app.js"></script>
-</body>
+    <script src="js/boot.js"></script>
+    <script src="js/vendor/supabase.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/pwa.js"></script>
+  </body>
 </html>
