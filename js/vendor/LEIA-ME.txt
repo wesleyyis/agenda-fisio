@@ -1,0 +1,22 @@
+Biblioteca hospedada localmente
+================================
+
+Arquivo: supabase.min.js
+Versao:  @supabase/supabase-js 2.45.4 (build UMD minificado)
+Origem:  https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js
+Licenca: MIT (https://github.com/supabase/supabase-js/blob/master/LICENSE)
+
+Motivo de estar aqui:
+- Evita depender do CDN em tempo de execucao.
+- Evita o bloqueio "Tracking Prevention blocked access to storage" do Edge,
+  que ocorre quando o script vem de um dominio de terceiros e pode impedir o
+  Supabase de guardar a sessao (inclusive a sessao temporaria do link de
+  recuperacao de senha).
+- Funciona mesmo se o CDN estiver indisponivel ou bloqueado por firewall.
+
+Como atualizar:
+1. Baixe a nova versao UMD em
+   https://cdn.jsdelivr.net/npm/@supabase/supabase-js@VERSAO/dist/umd/supabase.min.js
+2. Substitua js/vendor/supabase.min.js.
+3. Atualize a versao neste arquivo.
+4. Teste o fluxo de login e o de recuperacao de senha antes de publicar.

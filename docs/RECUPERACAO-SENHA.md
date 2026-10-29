@@ -197,6 +197,27 @@ Regras atuais:
 > pode ficar aberto, mas ao salvar o app mostra “A sessão do link expirou.
 > Peça um novo link…”. O botão **Cancelar** sempre volta ao login.
 
+### 2.7. Biblioteca do Supabase hospedada localmente
+
+O `index.html` não carrega mais o Supabase de `cdn.jsdelivr.net`; usa
+`js/vendor/supabase.min.js` (mesma versão 2.45.4, MIT).
+
+Motivos:
+
+- O Edge mostra `Tracking Prevention blocked access to storage for
+  https://cdn.jsdelivr.net/...` quando o script vem de outro domínio. Em
+  configurações mais restritas isso pode impedir o SDK de guardar a sessão,
+  inclusive a sessão temporária do link de recuperação.
+- Elimina a dependência de um CDN externo (bloqueios de rede/firewall).
+
+O cliente também é criado com `flowType: "implicit"` explícito, que é o formato
+de link de recuperação usado por este projeto (tokens no `#` da URL).
+
+Como atualizar a biblioteca: veja `js/vendor/LEIA-ME.txt`.
+
+> Se o link não puder ser validado (expirado, já usado ou aberto num navegador
+> diferente), o modal mostra um aviso imediato:
+> “Não foi possível validar o link neste navegador…”.
 
 ---
 
@@ -472,6 +493,9 @@ guarda do `startApp()`). Se não contiver, o deploy ainda é o antigo.
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
+| Console: `Tracking Prevention blocked access to storage ... cdn.jsdelivr.net` | A biblioteca do Supabase vinha de um CDN de terceiros e o navegador bloqueou o armazenamento | Já corrigido: biblioteca local em `js/vendor/supabase.min.js`; limpar cache e recarregar |
+| Login responde `400` em `/auth/v1/token?grant_type=password` | É uma tentativa de **login** com e-mail/senha incorretos, não a recuperação | Conferir a senha; se o link não abriu o formulário, pedir um link novo |
+| Link abre o login com “expirado ou já foi usado” | Link de recuperação é de uso único e expira (1 hora por padrão) | Pedir um novo link e abrir imediatamente |
 | Correção feita, mas o site continua com o comportamento antigo | O Netlify publica o branch `main`; a correção ficou em outro branch | Fazer merge/push para o `main` e conferir `js/app.js` publicado (secção 4.1) |
 | Link abre em `localhost` | **Site URL** do Supabase ainda é local, ou `redirectTo` não está em **Redirect URLs** | Corrigir as duas configurações (seção 3) |
 | Link abre em “URL inválida” / página em branco | App aberto por `file://` na hora de pedir o link | Publicar o site ou preencher `APP_URL` |

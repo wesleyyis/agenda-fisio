@@ -437,7 +437,7 @@ function init(){
  if(recovering)markRecoveryFlow(true);
  else if(linkMsg){markRecoveryFlow(false);clearRecoveryRequest()}
  if(linkMsg)cleanAuthUrl();
- sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{detectSessionInUrl:true}});authMode("login");
+ sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{detectSessionInUrl:true,flowType:"implicit",persistSession:true}});authMode("login");
  if(linkMsg)amsg(linkMsg);
  sb.auth.onAuthStateChange(function(ev,session){
   setTimeout(function(){
@@ -446,7 +446,9 @@ function init(){
    if(ev==="PASSWORD_RECOVERY"){
     recovering=true;markRecoveryFlow(true);
     if(session&&session.user)S.user=session.user;
-    showAuth(true);cleanAuthUrl();openResetPassword(session&&session.user&&session.user.email);return;
+    showAuth(true);cleanAuthUrl();openResetPassword(session&&session.user&&session.user.email);
+    var w=$("np-warn");if(w){w.hidden=true;w.textContent=""}
+    return;
    }
    if(ev==="SIGNED_IN"){
     if(recovering&&session&&session.user){
@@ -469,7 +471,19 @@ function init(){
    if(ev==="INITIAL_SESSION"){
     /* Enquanto a recuperação estiver ativa, o evento inicial não fecha o
        formulário nem descarta a sessão do link. */
-    if(recovering||resetOpen){showAuth(true);openResetPassword(session&&session.user&&session.user.email);return}
+    if(recovering||resetOpen){
+     showAuth(true);openResetPassword(session&&session.user&&session.user.email);
+     /* INITIAL_SESSION chega depois de o Supabase processar a URL. Sem sessão
+        aqui, o link não foi validado (expirado, já usado ou aberto noutro
+        navegador/aparelho). O formulário continua aberto para o usuário ver o
+        aviso e poder cancelar. */
+     var w=$("np-warn");
+     if(w&&!(session&&session.user)){
+      w.textContent="Não foi possível validar o link neste navegador. Se ele já foi usado ou expirou, cancele e peça um novo em \"Esqueci minha senha\".";
+      w.hidden=false;
+     }
+     return;
+    }
     showAuth();
    }
   },0)});
@@ -486,8 +500,9 @@ function openResetPassword(email){
  email=email||(S.user&&S.user.email)||"";
  if(resetOpen){
   /* O formulário já está aberto: só completa o e-mail da conta se ele chegou depois. */
-  var acc=$("np-acc");
+  var acc=$("np-acc"),warn=$("np-warn");
   if(email&&acc&&acc.textContent.indexOf("@")<0){acc.innerHTML='Conta: <b>'+esc(email)+'</b>';acc.hidden=false}
+  if(email&&warn){warn.hidden=true;warn.textContent=""}
   return;
  }
  resetOpen=true;modalLocked=true;
@@ -495,6 +510,7 @@ function openResetPassword(email){
  modal('<div class="row"><b style="font-size:1.1rem">Definir nova senha</b></div>'+
   '<div class="mute" id="np-acc"'+(email?"":" hidden")+'>Conta: <b>'+esc(email)+'</b></div>'+
   '<div class="mute">Crie uma nova senha para voltar a acessar sua agenda.</div>'+
+  '<div id="np-warn" class="hint" hidden></div>'+
   '<div id="np-err" class="hint err" hidden></div>'+
   '<div><label for="np">Nova senha</label><input id="np" type="password" autocomplete="new-password" minlength="6" placeholder="Mínimo 6 caracteres"></div>'+
   '<div><label for="np2">Confirmar nova senha</label><input id="np2" type="password" autocomplete="new-password" minlength="6" placeholder="Repita a nova senha"></div>'+
