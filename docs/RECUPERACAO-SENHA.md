@@ -152,9 +152,9 @@ o endereço correto (antes ele usava o Site URL do painel).
   modal.
 - Em retornos com `?code=...` sem `type=recovery`, o app reconhece o pedido
   guardado no navegador (válido por 2 horas) e abre o formulário.
-- O modal tem **Nova senha** e **Confirmar nova senha**, valida o mínimo de 6
-  caracteres e a igualdade entre os campos, e não fecha por clique fora ou
-  tecla Esc durante a recuperação.
+- O modal tem **Nova senha** e **Confirmar nova senha** e não fecha por clique
+  fora ou tecla Esc durante a recuperação. A validação e os recursos visuais
+  estão descritos na secção 2.8.
 - Erros vindos do link (ex.: `otp_expired`) agora aparecem na tela em
   português, em vez de a página abrir sem explicação. Quando a URL já traz um
   erro, a recuperação nem começa (não abre um formulário que não poderia
@@ -166,8 +166,8 @@ o endereço correto (antes ele usava o Site URL do painel).
   - o app volta à tela de login com o e-mail preenchido e exibe
     **“Senha alterada com sucesso! Entre com a nova senha.”**;
   - o usuário entra normalmente com a nova senha.
-- O botão **Cancelar e voltar ao login** encerra a recuperação e descarta a
-  sessão temporária.
+- O link **Voltar para o Login** encerra a recuperação e descarta a sessão
+  temporária.
 
 ### 2.6. `js/app.js` — recuperação "sticky" (correção do pisca e vai para a Home)
 
@@ -180,7 +180,8 @@ abria em seguida. Causa: a ordem dos eventos do Supabase não é fixa. Um
 Regras atuais:
 
 - `recovering` é "sticky": só é desligado em três situações explícitas:
-  senha salva com sucesso, botão **Cancelar**, ou login/cadastro manual.
+  senha salva com sucesso, link **Voltar para o Login**, ou login/cadastro
+  manual.
 - `SIGNED_OUT` durante a recuperação **não** derruba o formulário; ele apenas
   mantém a tela de login com o modal aberto.
 - `INITIAL_SESSION` sem sessão durante a recuperação também não fecha o modal.
@@ -195,7 +196,7 @@ Regras atuais:
 
 > Se o link estiver expirado e o Supabase não devolver sessão, o formulário
 > pode ficar aberto, mas ao salvar o app mostra “A sessão do link expirou.
-> Peça um novo link…”. O botão **Cancelar** sempre volta ao login.
+> Peça um novo link…”. O link **Voltar para o Login** sempre volta ao login.
 
 ### 2.7. Biblioteca do Supabase hospedada localmente
 
@@ -218,6 +219,47 @@ Como atualizar a biblioteca: veja `js/vendor/LEIA-ME.txt`.
 > Se o link não puder ser validado (expirado, já usado ou aberto num navegador
 > diferente), o modal mostra um aviso imediato:
 > “Não foi possível validar o link neste navegador…”.
+
+### 2.8. Tela “Definir nova senha” (interface)
+
+O modal foi redesenhado em HTML + CSS tradicional + JS puro, sem build e sem
+bibliotecas novas. Fica dentro do modal existente para preservar a sessão de
+recuperação do Supabase.
+
+Recursos:
+
+- Cabeçalho com ícone, título e texto de apoio; chip com o e-mail da conta
+  (quando conhecido).
+- Campos **Nova senha** e **Confirmar nova senha**, cada um com botão de olho
+  (`aria-pressed`) para mostrar/ocultar o valor.
+- Medidor de força em tempo real, em 3 segmentos: **Fraca**, **Média** e
+  **Forte**, com cor própria (vermelho, âmbar e verde).
+- Checklist de requisitos que fica verde ao ser cumprido:
+  mínimo de 8 caracteres, pelo menos 1 número, 1 letra maiúscula e
+  1 caractere especial.
+- Feedback da confirmação: “As senhas conferem.” / “As senhas não conferem.”,
+  com borda vermelha no campo enquanto forem diferentes.
+- O botão **Salvar Nova Senha** só habilita quando todos os requisitos passam
+  e as duas senhas são iguais. Durante o envio ele mostra um spinner e o texto
+  **“Salvando…”**, e fica bloqueado para evitar duplo clique.
+- Link discreto **Voltar para o Login** no rodapé (mesma ação do antigo botão
+  Cancelar).
+- Layout responsivo: no computador o modal fica centralizado; no celular sobe
+  como folha inferior encostada na base, com rolagem interna se a tela for
+  baixa. Nada de rolagem horizontal em 320 px.
+- Acessibilidade: `role="alert"` no erro, `aria-live` na força e na
+  confirmação, foco automático no primeiro campo e rótulos ligados aos inputs.
+
+Arquivos:
+
+| Arquivo | O que mudou |
+|---|---|
+| `js/app.js` | `openResetPassword()` reescrita; validação, força, olho, loading e link de volta |
+| `css/style.css` | bloco `/* ---------- redefinição de senha ---------- */` com classes `.rp-*` |
+
+> A regra do app (8 caracteres + maiúscula + número + especial) é mais forte
+> que o mínimo do Supabase (6 caracteres). A mensagem de erro do Supabase para
+> senha fraca também foi traduzida para essa regra.
 
 ---
 
@@ -446,7 +488,8 @@ Depois de configurar, faça um teste e confira o resultado em
 3. Clique em **Esqueci minha senha**, informe o e-mail e envie.
 4. Abra o e-mail e clique no link.
 5. O navegador deve abrir o app e exibir o modal **Definir nova senha**.
-6. Informe a nova senha e a confirmação (mínimo 6 caracteres) e salve.
+6. Informe a nova senha e a confirmação (mínimo 8 caracteres, com 1 letra
+   maiúscula, 1 número e 1 caractere especial) e salve.
 7. O app deve mostrar **“Senha alterada com sucesso!”**, voltar ao login com
    o e-mail preenchido e pedir a nova senha.
 8. Entre com a nova senha para confirmar.

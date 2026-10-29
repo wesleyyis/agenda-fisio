@@ -135,6 +135,73 @@ button.card{cursor:pointer}
 @media (min-width:900px){.pdet{display:grid}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
+/* ---------- redefinição de senha ---------- */
+.rp{display:flex;flex-direction:column;gap:16px}
+.rp-head{display:flex;align-items:center;gap:14px}
+.rp-ico{width:48px;height:48px;border-radius:15px;flex:none;display:grid;place-items:center;color:#fff;background:var(--grad);box-shadow:0 10px 26px #4f6df04d}
+.rp-ico svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rp-head h2{margin:0;font-size:1.22rem;line-height:1.25;letter-spacing:-.025em;font-weight:800}
+.rp-head p{margin:4px 0 0;font-size:.84rem;line-height:1.45;color:var(--mute)}
+.rp-acc{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;max-width:100%;padding:6px 11px;border-radius:999px;background:var(--soft);border:1px solid var(--line);font-size:.78rem;font-weight:600;color:var(--mute)}
+.rp-acc svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.rp-acc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-acc b{color:var(--ink);font-weight:700}
+.rp-form{display:flex;flex-direction:column;gap:15px;margin:0}
+.rp-field{display:flex;flex-direction:column;gap:7px}
+.rp-field label{display:block;margin:0;font-size:.7rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);transition:color .2s}
+.rp-field:focus-within label{color:#22d3ee}
+.rp-input{position:relative}
+.rp-input input{display:block;width:100%;height:52px;min-height:52px;margin:0;padding:0 52px 0 15px;font:inherit;font-size:16px;color:var(--ink);background:#070b17;border:1px solid var(--line);border-radius:14px;caret-color:#22d3ee;transition:border-color .2s,box-shadow .2s,background .2s}
+.rp-input input::placeholder{color:#44547a}
+.rp-input input:focus{outline:none;background:#080e1d;border-color:#22b8e0;box-shadow:0 0 0 4px #10b6d61f}
+.rp-input input:-webkit-autofill{-webkit-box-shadow:0 0 0 100px #070b17 inset;-webkit-text-fill-color:var(--ink)}
+.rp-input.bad input{border-color:#ff7a8a99;box-shadow:0 0 0 4px #ff7a8a14}
+.rp-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:40px;height:40px;display:grid;place-items:center;margin:0;padding:0;border:0;border-radius:10px;background:transparent;color:#7d8db0;transition:color .2s,background .2s}
+.rp-eye:hover{color:#fff;background:#ffffff0f}
+.rp-eye svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rp-eye .eye-off{display:none}
+.rp-eye[aria-pressed="true"] .eye{display:none}
+.rp-eye[aria-pressed="true"] .eye-off{display:block}
+.rp-strength{display:flex;flex-direction:column;gap:7px}
+.rp-bars{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.rp-bars i{height:5px;border-radius:99px;background:var(--line);transition:background .3s,box-shadow .3s}
+.rp-strength[data-level="1"] .rp-bars i:nth-child(1){background:var(--no);box-shadow:0 0 10px #ff7a8a55}
+.rp-strength[data-level="2"] .rp-bars i:nth-child(-n+2){background:var(--amb);box-shadow:0 0 10px #f0b04a55}
+.rp-strength[data-level="3"] .rp-bars i{background:var(--ok);box-shadow:0 0 10px #4ade9f55}
+.rp-strength-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.76rem;color:var(--mute)}
+.rp-strength-row b{font-weight:700;color:var(--mute)}
+.rp-strength[data-level="1"] .rp-strength-row b{color:var(--no)}
+.rp-strength[data-level="2"] .rp-strength-row b{color:var(--amb)}
+.rp-strength[data-level="3"] .rp-strength-row b{color:var(--ok)}
+.rp-reqs{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0;padding:0}
+.rp-reqs li{display:flex;align-items:center;gap:8px;font-size:.79rem;line-height:1.3;color:var(--mute);transition:color .2s}
+.rp-reqs .dot{width:17px;height:17px;border-radius:50%;flex:none;display:grid;place-items:center;border:1.5px solid var(--line);transition:background .2s,border-color .2s}
+.rp-reqs .dot svg{width:10px;height:10px;opacity:0;transform:scale(.4);fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s,transform .2s}
+.rp-reqs li.ok{color:var(--ok)}
+.rp-reqs li.ok .dot{background:var(--okbg);border-color:var(--ok)}
+.rp-reqs li.ok .dot svg{opacity:1;transform:none}
+.rp-match{display:flex;align-items:center;gap:6px;min-height:17px;font-size:.78rem;color:var(--mute);transition:color .2s}
+.rp-match svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .2s}
+.rp-match svg.ic-no{display:none}
+.rp-match.ok{color:var(--ok)}
+.rp-match.bad{color:var(--no)}
+.rp-match.ok svg.ic-ok,.rp-match.bad svg.ic-no{opacity:1}
+.rp-match.bad svg.ic-ok{display:none}
+.rp-match.bad svg.ic-no{display:block}
+.rp-submit{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;height:54px;margin-top:2px;padding:0 18px;border:0;border-radius:15px;font:inherit;font-size:1rem;font-weight:800;letter-spacing:-.01em;color:#fff;background:var(--grad);box-shadow:0 12px 30px #3b82f640;transition:transform .2s,filter .25s,opacity .2s,box-shadow .25s}
+.rp-submit:not(:disabled):hover{transform:translateY(-2px);filter:brightness(1.08);box-shadow:0 16px 36px #6366f166}
+.rp-submit:not(:disabled):active{transform:none}
+.rp-submit:disabled{opacity:.42;box-shadow:none}
+.rp-submit.loading{opacity:1;cursor:progress}
+.rp-spin{display:none;width:17px;height:17px;border-radius:50%;border:2px solid #ffffff55;border-top-color:#fff;animation:rpSpin .7s linear infinite}
+.rp-submit.loading .rp-spin{display:block}
+@keyframes rpSpin{to{transform:rotate(360deg)}}
+.rp-foot{margin:0;text-align:center}
+.rp-back{padding:8px 12px;border:0;border-radius:10px;background:transparent;font:inherit;font-size:.84rem;font-weight:600;color:var(--mute);transition:color .2s,background .2s}
+.rp-back:hover{color:var(--ink);background:#ffffff0a}
+.rp-back:disabled{opacity:.5;cursor:default}
+@media (max-width:359px){.rp-reqs{grid-template-columns:1fr}}
+
 /* ====== TEMA ESCURO + NOVO LOGIN (AgendaPro) ====== */
 html{color-scheme:dark}
 body{background:radial-gradient(900px 520px at 6% -6%,#0b3a5a55,transparent 62%),radial-gradient(800px 520px at 100% 100%,#2c1b7a40,transparent 60%),#04060d;background-attachment:fixed}

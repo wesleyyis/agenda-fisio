@@ -491,7 +491,7 @@ function init(){
 function resetPasswordError(m){
  if(/Auth session missing|session.*missing|JWT|not authenticated|invalid.*session/i.test(m))return "A sessão do link expirou. Peça um novo link em \"Esqueci minha senha\".";
  if(/different from the old|same password|should be different/i.test(m))return "A nova senha precisa ser diferente da senha atual.";
- if(/at least \d+ characters|weak password|Password should/i.test(m))return "A senha precisa ter pelo menos 6 caracteres.";
+ if(/at least \d+ characters|weak password|Password should/i.test(m))return "A senha precisa ter no mínimo 8 caracteres, com 1 letra maiúscula, 1 número e 1 caractere especial.";
  if(/rate limit|too many|security purposes/i.test(m))return "Muitas tentativas. Aguarde alguns minutos e tente de novo.";
  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Sem conexão com a internet. Verifique e tente de novo.";
  return m;
@@ -500,30 +500,84 @@ function openResetPassword(email){
  email=email||(S.user&&S.user.email)||"";
  if(resetOpen){
   /* O formulário já está aberto: só completa o e-mail da conta se ele chegou depois. */
-  var acc=$("np-acc"),warn=$("np-warn");
-  if(email&&acc&&acc.textContent.indexOf("@")<0){acc.innerHTML='Conta: <b>'+esc(email)+'</b>';acc.hidden=false}
+  var acc=$("np-acc"),mail=$("np-mail"),warn=$("np-warn");
+  if(email&&acc&&mail&&acc.textContent.indexOf("@")<0){mail.textContent=email;acc.hidden=false}
   if(email&&warn){warn.hidden=true;warn.textContent=""}
   return;
  }
  resetOpen=true;modalLocked=true;
  showAuth(true);authMode("login");
- modal('<div class="row"><b style="font-size:1.1rem">Definir nova senha</b></div>'+
-  '<div class="mute" id="np-acc"'+(email?"":" hidden")+'>Conta: <b>'+esc(email)+'</b></div>'+
-  '<div class="mute">Crie uma nova senha para voltar a acessar sua agenda.</div>'+
+ var eye='<svg class="eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'+
+  '<svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 4.1-5.1M9.9 5.2A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a18.6 18.6 0 0 1-2.2 3.2M1 1l22 22"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/></svg>';
+ var reqsHtml="";
+ var REQ_TXT=[["len","Mínimo de 8 caracteres"],["num","Pelo menos 1 número"],["upper","1 letra maiúscula"],["esp","1 caractere especial"]];
+ REQ_TXT.forEach(function(r){reqsHtml+='<li data-req="'+r[0]+'"><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#chk"/></svg></span>'+r[1]+'</li>'});
+ modal('<div class="rp">'+
+  '<div class="rp-head"><span class="rp-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2.5"/></svg></span>'+
+   '<div><h2>Definir nova senha</h2><p>Crie uma senha nova e segura para voltar a acessar sua agenda.</p></div></div>'+
+  '<div class="rp-acc" id="np-acc"'+(email?"":" hidden")+'><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg><span>Conta: <b id="np-mail">'+esc(email)+'</b></span></div>'+
   '<div id="np-warn" class="hint" hidden></div>'+
-  '<div id="np-err" class="hint err" hidden></div>'+
-  '<div><label for="np">Nova senha</label><input id="np" type="password" autocomplete="new-password" minlength="6" placeholder="Mínimo 6 caracteres"></div>'+
-  '<div><label for="np2">Confirmar nova senha</label><input id="np2" type="password" autocomplete="new-password" minlength="6" placeholder="Repita a nova senha"></div>'+
-  '<button class="btn" id="np-ok">Salvar nova senha</button>'+
-  '<button class="btn sec" id="np-cancel">Cancelar e voltar ao login</button>');
- var btn=$("np-ok"),cancel=$("np-cancel"),er=$("np-err");
- function fail(t){er.textContent=t;er.hidden=false}
+  '<div id="np-err" class="hint err" role="alert" hidden></div>'+
+  '<form class="rp-form" id="np-form" novalidate>'+
+   '<div class="rp-field"><label for="np">Nova senha</label><div class="rp-input"><input id="np" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Digite a nova senha"><button type="button" class="rp-eye" id="np-eye" aria-label="Mostrar senha" aria-pressed="false">'+eye+'</button></div></div>'+
+   '<div class="rp-strength" id="np-strength" data-level="0">'+
+    '<div class="rp-bars" aria-hidden="true"><i></i><i></i><i></i></div>'+
+    '<div class="rp-strength-row"><span>Força da senha</span><b id="np-level" aria-live="polite">—</b></div>'+
+    '<ul class="rp-reqs" id="np-reqs">'+reqsHtml+'</ul>'+
+   '</div>'+
+   '<div class="rp-field"><label for="np2">Confirmar nova senha</label><div class="rp-input" id="np2-box"><input id="np2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Repita a nova senha"><button type="button" class="rp-eye" id="np2-eye" aria-label="Mostrar senha" aria-pressed="false">'+eye+'</button></div>'+
+    '<div class="rp-match" id="np-match" aria-live="polite"><svg class="ic-ok" viewBox="0 0 24 24" aria-hidden="true"><use href="#chk"/></svg><svg class="ic-no" viewBox="0 0 24 24" aria-hidden="true"><use href="#xx"/></svg><span>As senhas precisam ser iguais.</span></div></div>'+
+   '<button type="submit" class="rp-submit" id="np-ok" disabled><span class="rp-spin" aria-hidden="true"></span><span class="rp-submit-t">Salvar Nova Senha</span></button>'+
+   '<p class="rp-foot"><button type="button" class="rp-back" id="np-cancel">Voltar para o Login</button></p>'+
+  '</form>'+
+ '</div>');
+ var form=$("np-form"),btn=$("np-ok"),cancel=$("np-cancel"),er=$("np-err"),
+  np=$("np"),np2=$("np2"),box2=$("np2-box"),match=$("np-match"),
+  matchTxt=match.querySelector("span"),strength=$("np-strength"),level=$("np-level"),
+  reqsEl=$("np-reqs"),warn=$("np-warn"),label=btn.querySelector(".rp-submit-t");
+ function fail(t){er.textContent=t;er.hidden=false;if(er.scrollIntoView)try{er.scrollIntoView({block:"nearest"})}catch(e){}}
+ var TESTS=[
+  ["len",function(v){return v.length>=8}],
+  ["num",function(v){return /\d/.test(v)}],
+  ["upper",function(v){return /[A-ZÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ]/.test(v)}],
+  ["esp",function(v){return /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~]/.test(v)}]
+ ];
+ function matches(v){var ok=true;TESTS.forEach(function(t){
+  var pass=t[1](v),li=reqsEl.querySelector('[data-req="'+t[0]+'"]');
+  if(li)li.classList.toggle("ok",pass);
+  if(!pass)ok=false;
+ });return ok}
+ function paint(){
+  var v=np.value,v2=np2.value,all=matches(v),n=0;
+  TESTS.forEach(function(t){if(t[1](v))n++});
+  var lvl=!v.length?0:all?3:n>=2?2:1;
+  strength.setAttribute("data-level",String(lvl));
+  level.textContent=!v.length?"—":lvl===3?"Forte":lvl===2?"Média":"Fraca";
+  var same=v2.length>0&&v===v2;
+  box2.classList.toggle("bad",v2.length>0&&!same);
+  match.className="rp-match"+(v2.length?(same?" ok":" bad"):"");
+  matchTxt.textContent=!v2.length?"As senhas precisam ser iguais.":same?"As senhas conferem.":"As senhas não conferem.";
+  if(!er.hidden&&all&&same){er.hidden=true;er.textContent=""}
+  btn.disabled=!(all&&same);
+ }
+ function setEye(id,input){
+  var b=$(id);if(!b)return;
+  b.onclick=function(){
+   var show=b.getAttribute("aria-pressed")!=="true";
+   b.setAttribute("aria-pressed",show?"true":"false");
+   b.setAttribute("aria-label",show?"Ocultar senha":"Mostrar senha");
+   input.type=show?"text":"password";
+   try{input.focus({preventScroll:true})}catch(e){input.focus()}
+  };
+ }
+ setEye("np-eye",np);setEye("np2-eye",np2);
  async function save(){
-  var v=$("np").value,v2=$("np2").value;
-  er.hidden=true;
-  if(v.length<6){fail("A senha precisa ter pelo menos 6 caracteres.");$("np").focus();return}
-  if(v!==v2){fail("As senhas não conferem. Digite a mesma senha nos dois campos.");$("np2").focus();return}
-  btn.disabled=true;cancel.disabled=true;
+  var v=np.value,v2=np2.value;
+  if(!matches(v)){fail("A senha ainda não atende a todos os requisitos abaixo.");np.focus();return}
+  if(v!==v2){fail("As senhas não conferem. Digite a mesma senha nos dois campos.");box2.classList.add("bad");np2.focus();return}
+  er.hidden=true;er.textContent="";
+  btn.classList.add("loading");btn.disabled=true;cancel.disabled=true;btn.setAttribute("aria-busy","true");
+  label.textContent="Salvando...";
   try{
    var r=await sb.auth.updateUser({password:v});
    if(r.error)throw r.error;
@@ -537,10 +591,16 @@ function openResetPassword(email){
    toast("Senha alterada com sucesso!");
    setTimeout(function(){var p=$("pw");if(p)p.focus()},80);
   }catch(e){
-   fail(resetPasswordError(errMsg(e)));
+   btn.classList.remove("loading");btn.removeAttribute("aria-busy");
+   label.textContent="Salvar Nova Senha";
    btn.disabled=false;cancel.disabled=false;
+   fail(resetPasswordError(errMsg(e)));
   }
  }
+ form.addEventListener("submit",function(e){e.preventDefault();if(btn.disabled&&!er.textContent)fail("A senha ainda não atende a todos os requisitos abaixo.");save()});
+ [np,np2].forEach(function(el){el.addEventListener("input",paint);el.addEventListener("keydown",function(e){
+  if(e.key==="Enter"){e.preventDefault();save()}
+ })});
  cancel.onclick=async function(){
   if(!resetOpen)return;
   resetOpen=false;recovering=false;markRecoveryFlow(false);clearRecoveryRequest();cleanAuthUrl();closeModal();
@@ -548,11 +608,8 @@ function openResetPassword(email){
   showAuth();authMode("login");
   toast("Recuperação cancelada. Peça um novo link quando quiser.");
  };
- btn.onclick=save;
- ["np","np2"].forEach(function(id){$(id).addEventListener("keydown",function(e){
-  if(e.key==="Enter"){e.preventDefault();save()}
- })});
- setTimeout(function(){var p=$("np");if(p)p.focus()},50);
+ paint();
+ setTimeout(function(){if(np)np.focus()},50);
 }
 try{init()}catch(e){var bx=$("boot");if(bx){bx.hidden=false;bx.innerHTML="<b>Erro ao iniciar</b><br><small>"+esc(errMsg(e))+"</small>"}}
 })();
