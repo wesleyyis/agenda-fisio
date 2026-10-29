@@ -14,5 +14,5 @@ var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
    - Este endereço também precisa estar cadastrado no Supabase em
      Authentication → URL Configuration (Site URL e Redirect URLs).
      Veja o passo a passo em docs/RECUPERACAO-SENHA.md. */
-var APP_URL = "";
+var APP_URL = "https://agendaprox.netlify.app/";
 /* ======================================================== */

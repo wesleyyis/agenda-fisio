@@ -131,11 +131,30 @@ o endereço correto (antes ele usava o Site URL do painel).
 
 ---
 
-## 3. Configuração obrigatória no Supabase
+## 3. Configuração no painel do Supabase
 
-Acesse **Supabase → Authentication → URL Configuration**.
+Atalhos do seu projeto (ref. `xapteyatswdtmuuzqbiu`):
+
+| Página | Link direto |
+|---|---|
+| URL Configuration | https://supabase.com/dashboard/project/xapteyatswdtmuuzqbiu/auth/url-configuration |
+| Email Templates | https://supabase.com/dashboard/project/xapteyatswdtmuuzqbiu/auth/templates |
+| SMTP Settings | https://supabase.com/dashboard/project/xapteyatswdtmuuzqbiu/auth/smtp |
+| Rate Limits | https://supabase.com/dashboard/project/xapteyatswdtmuuzqbiu/auth/rate-limits |
+
+### Checklist rápido
+
+- [ ] **Site URL** = URL publicada do app (`https` + barra final).
+- [ ] **Redirect URLs** contém a URL publicada, a variação `/**` e, se for
+      testar localmente, `http://localhost:5500/**`.
+- [ ] Template **Reset Password** usa `{{ .ConfirmationURL }}`.
+- [ ] `APP_URL` em `js/config.js` = mesma URL publicada.
+- [ ] SMTP próprio configurado (obrigatório em produção).
+- [ ] Pedir um **novo** link de recuperação depois das mudanças.
 
 ### 3.1. Site URL
+
+**Authentication → URL Configuration → Site URL**
 
 Coloque o endereço **publicado** do app, sempre com `https` e barra final:
 
@@ -147,7 +166,13 @@ https://minha-agenda.netlify.app/
 > estiver como `http://localhost:3000`, **todo** link de e-mail cai em
 > localhost — exatamente o sintoma relatado.
 
+Atenção ao subcaminho: no GitHub Pages o app costuma ficar em
+`https://USUARIO.github.io/REPO/`. Nesse caso, o Site URL precisa incluir
+`/REPO/`.
+
 ### 3.2. Redirect URLs
+
+**Authentication → URL Configuration → Redirect URLs**
 
 Adicione as URLs permitidas (uma por linha):
 
@@ -157,19 +182,21 @@ https://minha-agenda.netlify.app/**
 http://localhost:5500/**
 ```
 
-- A primeira cobre o link de recuperação (que usa a raiz do site).
+- A primeira cobre o link de recuperação (que usa a raiz do site, com barra
+  final, exatamente como o app envia).
 - A segunda cobre caminhos internos e variações.
 - A terceira é opcional: só para testar no Live Server. Remova em produção se
   não quiser permitir redirecionamentos para a máquina local.
 
 A URL usada no e-mail precisa **bater exatamente** com uma entrada da lista
-(incluindo `https`, domínio e barra final). Caso contrário o Supabase ignora o
-`redirectTo` e usa o **Site URL**.
+(incluindo `https`, domínio, subcaminho e barra final). Caso contrário o
+Supabase ignora o `redirectTo` e usa o **Site URL**.
 
 ### 3.3. Template do e-mail
 
-Em **Authentication → Email Templates → Reset Password**, mantenha o link
-apontando para a URL de confirmação:
+**Authentication → Email Templates → Reset Password**
+
+Mantenha o link apontando para a URL de confirmação:
 
 ```html
 <a href="{{ .ConfirmationURL }}">Redefinir senha</a>
@@ -185,6 +212,32 @@ Preencha a mesma URL pública:
 ```js
 var APP_URL = "https://minha-agenda.netlify.app/";
 ```
+
+### 3.5. Envio de e-mails (SMTP)
+
+**Authentication → SMTP Settings**
+
+O serviço de e-mail embutido do Supabase é **só para testes**:
+
+- entrega apenas para endereços que fazem parte do time do projeto;
+- limite de **2 e-mails por hora**;
+- sem garantia de entrega.
+
+Em produção, habilite um SMTP próprio (Resend, SendGrid, Brevo, Amazon SES
+etc.) com host, porta, usuário, senha e remetente `no-reply@seudominio.com`.
+Sem isso, usuários reais recebem o erro **“Email address not authorized”** ou
+não recebem nada.
+
+### 3.6. Limites de envio (Rate Limits)
+
+**Authentication → Rate Limits**
+
+- **Password reset request (`/auth/v1/recover`):** por padrão, o mesmo usuário
+  só pode pedir um novo link após **60 segundos**. Se aparecer “For security
+  purposes…”, basta aguardar.
+- **Emails sent:** com SMTP próprio o padrão é **30 e-mails/hora** e pode ser
+  ajustado conforme o seu provedor.
+- Se receber `429 Too Many Requests`, aguarde ou revise esses limites.
 
 ---
 
@@ -221,7 +274,10 @@ painel do Supabase.
 | Link abre o app, mas não aparece o modal | `redirectTo` caiu em outra página/aba | Conferir **Redirect URLs** e o template do e-mail |
 | Erro “Email link is invalid or has expired” | Token inválido (link antigo, template alterado ou URL não liberada) | Gerar novo link após corrigir as configurações |
 | Nada acontece ao clicar em “Enviar link” | App em `file://` | Mensagem já orienta; publicar o site |
-| Muitos pedidos seguidos | Limite de envio do Supabase | Aguardar alguns minutos |
+| “Email address not authorized” | SMTP embutido do Supabase (só entrega para o time do projeto) | Configurar SMTP próprio |
+| E-mail não chega para usuários reais | SMTP embutido (2 e-mails/hora, sem garantia) | Configurar SMTP próprio e conferir SPF/DKIM/DMARC |
+| “For security purposes…” / `429` | Limite de 60 s por usuário ou limite de e-mails/hora | Aguardar e revisar **Rate Limits** |
+| Link expira antes de abrir | Filtro anti-spam do e-mail “pré-carrega” o link | Usar link/OTP próprio ou desativar o rastreio de links no provedor |
 
 > Links de recuperação já enviados antes da correção continuam inválidos.
 > É necessário pedir um novo link depois de ajustar o Supabase.
