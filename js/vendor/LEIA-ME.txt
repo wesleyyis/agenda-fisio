@@ -2,8 +2,8 @@ Biblioteca hospedada localmente
 ================================
 
 Arquivo: supabase.min.js
-Versao:  @supabase/supabase-js 2.45.4 (build UMD minificado)
-Origem:  https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js
+Versao:  @supabase/supabase-js 2.65.0 (build UMD minificado)
+Origem:  https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.65.0/dist/umd/supabase.min.js
 Licenca: MIT (https://github.com/supabase/supabase-js/blob/master/LICENSE)
 
 Motivo de estar aqui:
