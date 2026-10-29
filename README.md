@@ -5,6 +5,7 @@ Aplicação web para profissionais organizarem pacientes, atendimentos e sessõe
 ## Recursos
 
 - Cadastro e acesso por conta, com recuperação de senha.
+- Senha forte obrigatória no cadastro e na redefinição (8+ caracteres, maiúscula, número e especial).
 - Agenda de atendimentos por dia e por mês.
 - Cadastro de pacientes, informações de contato e pacotes de sessões.
 - Histórico de atendimentos, com opções para concluir, cancelar ou remarcar sessões.

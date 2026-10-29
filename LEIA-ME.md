@@ -42,6 +42,11 @@ O passo a passo completo, com diagnóstico de erros, está em [`docs/RECUPERACAO
 Para a pessoa entrar **na hora** depois de criar a conta, desligue **Authentication → Sign In / Providers → Email → Confirm email**. Com isso o app faz o login automático e ninguém precisa abrir o e-mail.
 O nome informado no cadastro ("Como você gostaria de ser chamado?") fica salvo na tabela `profiles`, ligado à conta.
 
+### Política de senha
+- **Cadastro e redefinição:** senha com no mínimo **8 caracteres**, 1 letra maiúscula, 1 número e 1 caractere especial. O app valida antes de enviar e exibe os requisitos em tempo real.
+- **Login:** contas antigas com senha mais simples continuam podendo entrar (o app só exige preenchimento e senha com 6+ caracteres).
+- A regra é a mesma para cadastro e redefinição (fonte única em `js/app.js`: `PW_RULES`).
+
 ## 5. Usar no celular
 - **iPhone (Safari):** Compartilhar → Adicionar à Tela de Início.
 - **Android (Chrome):** menu ⋮ → Instalar app / Adicionar à tela inicial.

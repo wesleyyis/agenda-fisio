@@ -23,10 +23,21 @@ var dmy=function(s){var d=parse(s);return pad(d.getDate())+"/"+pad(d.getMonth()+
 var dfull=function(s){var d=parse(s);return cap(WDL[d.getDay()])+", "+d.getDate()+" de "+MN[d.getMonth()]};
 var ic=function(n){return '<svg class="i"><use href="#'+n+'"/></svg>'};
 var money=function(v){return "R$ "+Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2})};
-var initials=function(n){var w=n.trim().split(/\s+/);return(w[0].charAt(0)+(w.length>1?w[w.length-1].charAt(0):"")).toUpperCase()};
+var initials=function(n){var w=String(n||"").trim().split(/\s+/);return w[0]?(w[0].charAt(0)+(w.length>1?w[w.length-1].charAt(0):"")).toUpperCase():"?"};
 var LAB={realizado:"Realizada",cancelado:"Cancelada",remarcado:"Remarcada",agendado:"Agendada"};
 
-var S={user:null,name:"",pts:[],ap:[],view:"agenda",pid:null,day:todayISO(),cm:null,filt:"all",q:"",notified:{}};
+/* Regra única de senha: usada no cadastro e na redefinição.
+   O login só confere se a senha foi digitada (contas antigas continuam entrando). */
+var PW_RULES=[
+ ["len","Mínimo de 8 caracteres",function(v){return v.length>=8}],
+ ["num","Pelo menos 1 número",function(v){return /\d/.test(v)}],
+ ["upper","1 letra maiúscula",function(v){return /[A-ZÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ]/.test(v)}],
+ ["esp","1 caractere especial",function(v){return /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~]/.test(v)}]
+];
+var PW_MSG="Use pelo menos 8 caracteres, com 1 letra maiúscula, 1 número e 1 caractere especial.";
+var pwOk=function(v){return PW_RULES.every(function(r){return r[2](v)})};
+
+var S={user:null,name:"",pts:[],ap:[],view:"agenda",pid:null,day:todayISO(),cm:null,filt:"all",q:"",notified:{},done:{},next:{}};
 S.cm=new Date(parse(S.day).getFullYear(),parse(S.day).getMonth(),1);
 var sb=null,started=false,recovering=false,resetOpen=false,modalLocked=false;
 var RECOVERY_KEY="agendapro:recovery-request",RECOVERY_FLOW_KEY="agendapro:recovery-flow";
@@ -34,33 +45,87 @@ var RECOVERY_KEY="agendapro:recovery-request",RECOVERY_FLOW_KEY="agendapro:recov
 var getP=function(id){return S.pts.filter(function(p){return p.id===id})[0]};
 var getA=function(id){return S.ap.filter(function(a){return a.id===id})[0]};
 var cmpA=function(a,b){return a.date.localeCompare(b.date)||a.time.localeCompare(b.time)};
-var doneOf=function(pid){return S.ap.filter(function(a){return a.patient_id===pid&&a.status==="realizado"}).sort(cmpA)};
-var okc=function(pid){return doneOf(pid).length};
-var nextOf=function(pid){return S.ap.filter(function(a){return a.patient_id===pid&&a.status==="agendado"}).sort(cmpA)[0]};
+/* Índices recalculados a cada load(): evita varrer e ordenar toda a lista
+   por paciente a cada render (antes era O(n²) na tela de pacientes). */
+function indexAppts(){
+ var done={},next={};
+ S.ap.forEach(function(a){
+  if(a.status==="realizado"){(done[a.patient_id]||(done[a.patient_id]=[])).push(a)}
+  else if(a.status==="agendado"){var n=next[a.patient_id];if(!n||cmpA(a,n)<0)next[a.patient_id]=a}
+ });
+ Object.keys(done).forEach(function(k){done[k].sort(cmpA)});
+ S.done=done;S.next=next;
+}
+var doneOf=function(pid){return S.done[pid]||[]};
+var okc=function(pid){return (S.done[pid]||[]).length};
+var nextOf=function(pid){return S.next[pid]||null};
 var sessNo=function(a){return doneOf(a.patient_id).map(function(x){return x.id}).indexOf(a.id)+1};
 var whenTxt=function(a){if(!a)return"Sem agendamento";var t=todayISO(),tm=isoOf(new Date(Date.now()+864e5));
  return(a.date===t?"Hoje":a.date===tm?"Amanhã":WD[parse(a.date).getDay()])+" ("+dmy(a.date)+") · "+hm(a.time)};
 
-var tt=null;
+var tt=null,doneBusy={};
 function toast(m,ms){var e=$("toast");e.textContent=m;e.classList.add("show");clearTimeout(tt);tt=setTimeout(function(){e.classList.remove("show")},ms||2600)}
 function errMsg(e){return(e&&e.message)?e.message:"Erro inesperado."}
+/* Sessão expirada/revogada: o Supabase responde 401 ou mensagem de JWT/sessão. */
+function isAuthError(e){
+ if(!e)return false;
+ if(e.status===401)return true;
+ return /jwt|session missing|auth session missing|not authenticated|invalid.*token|refresh token/i.test(errMsg(e));
+}
+function onAuthExpired(){
+ if(recovering||resetOpen)return;
+ showAuth();
+ amsg("Sua sessão expirou. Entre novamente para continuar.","err");
+}
 
 /* ---------------- modal helpers ---------------- */
-function modal(html){$("modal").innerHTML='<div class="box"><div class="grip"></div>'+html+'</div>';$("modal").classList.add("on")}
-function closeModal(){$("modal").classList.remove("on");$("modal").innerHTML="";modalLocked=false}
+var lastFocus=null;
+function modal(html){
+ var m=$("modal"),wasOpen=m.classList.contains("on");
+ if(!wasOpen&&document.activeElement)lastFocus=document.activeElement;
+ m.innerHTML='<div class="box"><div class="grip"></div>'+html+'</div>';
+ var t=m.querySelector(".box h2,.box .row b");
+ if(t){if(!t.id)t.id="modal-title";m.setAttribute("aria-labelledby",t.id)}else m.removeAttribute("aria-labelledby");
+ m.classList.add("on");
+ setTimeout(function(){
+  var f=m.querySelector("input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled])");
+  if(!f)f=m.querySelector("[data-close]");
+  if(!f)f=m.querySelector("button:not([disabled])");
+  if(f){try{f.focus({preventScroll:true})}catch(e){f.focus()}}
+ },40);
+}
+function closeModal(){
+ var m=$("modal");
+ m.classList.remove("on");m.innerHTML="";m.removeAttribute("aria-labelledby");modalLocked=false;
+ if(lastFocus&&document.contains(lastFocus)){try{lastFocus.focus({preventScroll:true})}catch(e){}}
+ lastFocus=null;
+}
 $("modal").addEventListener("click",function(e){if(e.target===$("modal")&&!modalLocked)closeModal()});
-document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!modalLocked)closeModal()});
+document.addEventListener("keydown",function(e){
+ if(e.key==="Escape"&&!modalLocked){closeModal();return}
+ if(e.key!=="Tab")return;
+ var m=$("modal");if(!m.classList.contains("on"))return;
+ var f=[].filter.call(m.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]'),function(el){return el.offsetParent!==null});
+ if(!f.length)return;
+ var first=f[0],last=f[f.length-1];
+ if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+ else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+});
 function confirmBox(title,text,label,fn){
  modal('<div class="row"><b>'+esc(title)+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+'</button></div><div class="mute">'+esc(text)+'</div><button class="btn danger" id="cf-yes">'+esc(label)+'</button><button class="btn sec" data-close>Voltar</button>');
- $("cf-yes").onclick=function(){this.disabled=true;Promise.resolve(fn()).then(closeModal).catch(function(e){toast(errMsg(e));closeModal()})}}
+ $("cf-yes").onclick=function(){this.disabled=true;Promise.resolve().then(fn).then(closeModal).catch(function(e){toast(errMsg(e));closeModal()})}}
 
 /* ---------------- data ---------------- */
 async function load(){
  var r=await Promise.all([sb.from("patients").select("*").order("name"),sb.from("appointments").select("*").order("date").order("time")]);
  if(r[0].error)throw r[0].error;if(r[1].error)throw r[1].error;
  S.pts=r[0].data;S.ap=r[1].data.map(function(a){a.time=hm(a.time);return a});
+ indexAppts();
 }
-async function run(p,okMsg){try{var r=await p;if(r&&r.error)throw r.error;await load();render();if(okMsg)toast(okMsg);return r}catch(e){toast("Erro: "+errMsg(e),4000);return null}}
+async function run(p,okMsg){
+ try{var r=await p;if(r&&r.error)throw r.error;await load();render();if(okMsg)toast(okMsg);return r}
+ catch(e){if(isAuthError(e)){onAuthExpired();return null}toast("Erro: "+errMsg(e),4000);return null}
+}
 
 /* ---------------- URL do app e links de autenticação ---------------- */
 /* URL pública usada como redirectTo no e-mail de recuperação de senha.
@@ -91,8 +156,9 @@ function parseAuthLink(){
 }
 /* Guarda o pedido de recuperação para reconhecer também retornos com ?code=...,
    que não trazem o parâmetro type=recovery. */
-function saveRecoveryRequest(email){
- try{localStorage.setItem(RECOVERY_KEY,JSON.stringify({email:String(email||""),at:Date.now()}))}catch(e){}
+function saveRecoveryRequest(){
+ /* Guarda apenas o instante do pedido (sem e-mail/PII) para reconhecer o retorno com ?code=... */
+ try{localStorage.setItem(RECOVERY_KEY,JSON.stringify({at:Date.now()}))}catch(e){}
 }
 function recentRecoveryRequest(){
  try{
@@ -109,8 +175,8 @@ function recoveryFlowActive(){try{return sessionStorage.getItem(RECOVERY_FLOW_KE
 function cleanAuthUrl(){
  try{
   var q=new URLSearchParams(location.search);
-  ["error","error_code","error_description","code","token_hash","type"].forEach(function(k){q.delete(k)});
-  var qs=q.toString(),hs=/access_token=|error=|error_description=|type=recovery/.test(location.hash)?"":location.hash;
+  ["error","error_code","error_description","code","token_hash","type","access_token","refresh_token","expires_in","token_type"].forEach(function(k){q.delete(k)});
+  var qs=q.toString(),hs=/access_token=|refresh_token=|token_type=|error=|error_description=|type=recovery/.test(location.hash)?"":location.hash;
   history.replaceState(null,"",location.pathname+(qs?"?"+qs:"")+hs);
  }catch(e){}
 }
@@ -126,6 +192,7 @@ function authLinkMessage(l){
 var mode="login";
 function authMode(m){mode=m;var l=m==="login",c=m==="signup",f=m==="forgot";
  $("pwbox").hidden=f;$("namebox").hidden=!c;$("pw").autocomplete=c?"new-password":"current-password";
+ $("pw").placeholder=c?"8+ caracteres, maiúscula, número e especial":"Sua senha";
  $("auth-go").textContent=l?"Entrar":c?"Criar conta":"Enviar link de recuperação";
  $("auth-sw").textContent=l?"Criar conta":"Já tenho conta";$("auth-forgot").hidden=!l;$("auth-msg").hidden=true}
 function amsg(t,k){var m=$("auth-msg");m.className="hint "+(k||"err");m.textContent=t;m.hidden=false}
@@ -137,8 +204,9 @@ $("authform").addEventListener("submit",async function(e){
  if(mode!=="forgot"&&(recovering||resetOpen)){recovering=false;resetOpen=false;modalLocked=false;markRecoveryFlow(false);clearRecoveryRequest();closeModal()}
  if(!em){amsg("Informe o e-mail.");return}
  if(mode==="signup"&&!$("nm").value.trim()){amsg("Informe como você gostaria de ser chamado.");$("nm").focus();return}
- if(mode!=="forgot"&&pw.length<6){amsg("A senha precisa ter pelo menos 6 caracteres.");return}
- b.disabled=true;
+ if(mode==="signup"&&!pwOk(pw)){amsg(PW_MSG);$("pw").focus();return}
+ if(mode==="login"&&pw.length<6){amsg("A senha precisa ter pelo menos 6 caracteres.");return}
+ b.disabled=true;b.setAttribute("aria-busy","true");
  try{
   if(mode==="login"){var r=await sb.auth.signInWithPassword({email:em,password:pw});if(r.error)throw r.error}
   else if(mode==="signup"){var nm=$("nm").value.trim().slice(0,60),opts={data:{display_name:nm}},baseS=appBaseUrl();
@@ -148,32 +216,44 @@ $("authform").addEventListener("submit",async function(e){
    if(!(r2.data&&r2.data.session)){var r5=await sb.auth.signInWithPassword({email:em,password:pw});
     if(r5.error){if(/not confirmed/i.test(r5.error.message))throw new Error("CONFIRM_ON");throw r5.error}}}
   else{var baseR=appBaseUrl();
-   if(!baseR){amsg("Não foi possível montar o link de recuperação: o app está aberto como arquivo local (file://). Publique o site ou preencha APP_URL em js/config.js.");b.disabled=false;return}
+   if(!baseR){amsg("Não foi possível montar o link de recuperação: o app está aberto como arquivo local (file://). Publique o site ou preencha APP_URL em js/config.js.");b.disabled=false;b.removeAttribute("aria-busy");return}
    if(!appUrlConfigured()&&isLocalUrl(baseR))console.warn("[recuperação de senha] O link do e-mail apontará para "+baseR+". Em produção, preencha APP_URL em js/config.js e cadastre o endereço em Supabase → Authentication → URL Configuration.");
    var r3=await sb.auth.resetPasswordForEmail(em,{redirectTo:baseR});if(r3.error)throw r3.error;
-   saveRecoveryRequest(em);
+   saveRecoveryRequest();
    amsg("Link enviado para "+em+". Abra o e-mail e toque no link para definir a nova senha.","ok")}
  }catch(err){var m=errMsg(err);
   if(m==="CONFIRM_ON")m="Conta criada, mas o servidor ainda exige confirmação por e-mail. O administrador precisa desativar \"Confirm email\" no painel do Supabase (Authentication → Sign In / Providers → Email).";
   else if(/Invalid login/i.test(m))m="E-mail ou senha incorretos.";
   else if(/not confirmed/i.test(m))m="Este e-mail ainda não foi confirmado. Peça ao administrador para liberar o acesso.";
   else if(/already registered|already been registered/i.test(m))m="Este e-mail já tem conta. Toque em \"Já tenho conta\" e entre.";
-  else if(/at least \d+ characters|weak password|Password should/i.test(m))m="A senha precisa ter pelo menos 6 caracteres.";
+  else if(/at least \d+ characters|weak password|Password should/i.test(m))m=PW_MSG;
   else if(/rate limit|too many|security purposes/i.test(m))m="Muitas tentativas. Aguarde alguns minutos e tente de novo.";
   else if(/valid email|invalid.*email|Unable to validate email/i.test(m))m="Informe um e-mail válido.";
   else if(/Failed to fetch|NetworkError|Load failed/i.test(m))m="Sem conexão com a internet. Verifique e tente de novo.";
   amsg(m)}
- b.disabled=false});
+ b.disabled=false;b.removeAttribute("aria-busy")});
 function logout(){confirmBox("Sair da conta?","Você precisará entrar de novo neste aparelho.","Sair",async function(){await sb.auth.signOut()})}
 $("btn-out-d").onclick=logout;
 
-function showAuth(keepModal){started=false;if(!keepModal)S.user=null;$("app").hidden=true;$("auth").hidden=false;if(!keepModal){modalLocked=false;closeModal()}}
+function showAuth(keepModal){
+ var wasHidden=$("auth").hidden;
+ started=false;if(!keepModal)S.user=null;
+ $("app").hidden=true;$("auth").hidden=false;
+ if(wasHidden)authMode("login");
+ var p=$("pw");if(p)p.value="";
+ var b=$("auth-go");if(b){b.disabled=false;b.removeAttribute("aria-busy")}
+ if(!keepModal){modalLocked=false;closeModal()}
+}
 async function startApp(){
  /* Enquanto a recuperação de senha estiver em curso, o app nunca abre a Home.
     Se algum evento do Supabase tentar entrar na agenda, voltamos ao formulário. */
  if(recovering||resetOpen){openResetPassword();return}
  $("auth").hidden=true;$("app").hidden=false;setWho();
- try{await load()}catch(e){$("view").innerHTML='<div class="hint err">Não foi possível carregar os dados: '+esc(errMsg(e))+'. Confira se você executou o arquivo supabase.sql.</div>';return}
+ try{await load()}
+ catch(e){
+  if(isAuthError(e)){onAuthExpired();return}
+  $("view").innerHTML='<div class="hint err">Não foi possível carregar os dados: '+esc(errMsg(e))+'. Confira se você executou o arquivo supabase.sql.</div>';return
+ }
  await loadProfile();setWho();started=true;route();if(!S.name)askName(true)}
 
 /* ---------------- perfil (nome de exibição) ---------------- */
@@ -184,7 +264,12 @@ async function loadProfile(){
   S.name=((r.data&&r.data.display_name)||"").trim();
   if(!S.name&&metaName()){S.name=metaName();var u=await sb.from("profiles").upsert({user_id:S.user.id,display_name:S.name});if(u.error)throw u.error}
  }catch(e){S.name=S.name||metaName()}}
-function setWho(){var w=$("who");w.innerHTML=(S.name?'<b style="color:var(--ink)">'+esc(S.name)+"</b><br>":"")+esc(S.user.email);w.style.cursor="pointer";w.title="Alterar nome";w.onclick=function(){askName(false)}}
+function setWho(){
+ var w=$("who");w.innerHTML=(S.name?'<b style="color:var(--ink)">'+esc(S.name)+"</b><br>":"")+esc(S.user.email);
+ w.style.cursor="pointer";w.title="Alterar nome";w.tabIndex=0;w.setAttribute("role","button");
+ w.onclick=function(){askName(false)};
+ w.onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();askName(false)}}
+}
 function askName(first){
  modal('<div class="row"><b style="font-size:1.1rem">'+(first?"Como você gostaria de ser chamado?":"Alterar nome")+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div>"+
  '<div class="mute">'+(first?"Vamos usar esse nome para te receber no app.":"Esse nome aparece na saudação do app.")+"</div>"+
@@ -212,12 +297,17 @@ window.addEventListener("hashchange",route);
 function render(){
  if(!started)return;
  var v=S.view,top=(v==="agenda"||v==="pacientes");
- document.querySelectorAll("[data-nav]").forEach(function(b){b.classList.toggle("on",b.dataset.nav===(top?v:"pacientes"))});
+ document.querySelectorAll("[data-nav]").forEach(function(b){
+  var on=b.dataset.nav===(top?v:"pacientes");
+  b.classList.toggle("on",on);
+  if(on)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");
+ });
  $("fab").hidden=v!=="agenda";
  var bell='<button class="ibtn" id="btn-bell" aria-label="Ativar avisos de lembrete">'+ic("bel")+'</button>',
      out='<button class="ibtn mob" id="btn-out" aria-label="Sair">'+ic("out")+'</button>';
- $("back-slot").innerHTML="";$("greet").textContent="";$("greet").onclick=null;$("greet").title="";
- if(v==="agenda"){var hr=new Date().getHours();$("greet").textContent=S.name?"Olá, "+S.name+"! Seja bem-vindo":(hr<12?"Bom dia":hr<18?"Boa tarde":"Boa noite");$("greet").onclick=function(){askName(false)};$("greet").title="Alterar nome";$("ttl").textContent=dfull(S.day);
+ $("back-slot").innerHTML="";$("greet").textContent="";$("greet").onclick=null;$("greet").onkeydown=null;
+ $("greet").title="";$("greet").tabIndex=-1;$("greet").removeAttribute("role");
+ if(v==="agenda"){var hr=new Date().getHours();$("greet").textContent=S.name?"Olá, "+S.name+"! Seja bem-vindo":(hr<12?"Bom dia":hr<18?"Boa tarde":"Boa noite");$("greet").onclick=function(){askName(false)};$("greet").onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();askName(false)}};$("greet").title="Alterar nome";$("greet").tabIndex=0;$("greet").setAttribute("role","button");$("ttl").textContent=dfull(S.day);
   $("acts").innerHTML='<button class="btn sm desk" id="btn-new">'+ic("plus")+'Novo atendimento</button>'+bell+out;renderAgenda()}
  else if(v==="pacientes"){$("ttl").textContent="Pacientes";$("acts").innerHTML='<button class="btn sm" id="btn-newp">'+ic("plus")+'Cadastrar</button>'+bell+out;renderList()}
  else if(v==="paciente"){$("ttl").textContent=getP(S.pid).name;$("back-slot").innerHTML='<button class="ibtn" data-nav="pacientes" aria-label="Voltar">'+ic("chl")+'</button>';
@@ -238,7 +328,7 @@ function renderAgenda(){
  var f=S.cm,y=f.getFullYear(),m=f.getMonth(),ld=(f.getDay()+6)%7,dim=new Date(y,m+1,0).getDate(),tot=Math.ceil((ld+dim)/7)*7,t=todayISO(),cells="";
  var has={};S.ap.forEach(function(a){if(a.status==="agendado"||a.status==="realizado")has[a.date]=1});
  for(var x=0;x<tot;x++){var d=new Date(y,m,1-ld+x),i=isoOf(d);
-  cells+='<button class="cd'+(d.getMonth()!==m?" o":"")+(i===S.day?" on":"")+(i===t?" td":"")+'" data-day="'+i+'" aria-label="'+d.getDate()+" de "+MN[d.getMonth()]+'"><b>'+d.getDate()+'</b><i class="pt'+(has[i]?"":" z")+'"></i></button>'}
+  cells+='<button class="cd'+(d.getMonth()!==m?" o":"")+(i===S.day?" on":"")+(i===t?" td":"")+'" data-day="'+i+'" aria-pressed="'+(i===S.day)+'"'+(i===t?' aria-current="date"':"")+' aria-label="'+d.getDate()+" de "+MN[d.getMonth()]+'"><b>'+d.getDate()+'</b><i class="pt'+(has[i]?"":" z")+'"></i></button>'}
  var CAL='<div class="cal"><div class="ch"><button data-cm="-1" aria-label="Mês anterior">'+ic("chl")+'</button><b>'+MN[m]+" "+y+'</b><button data-day="'+t+'" style="padding:0 10px;font-size:.75rem;font-weight:700">Hoje</button><button data-cm="1" aria-label="Próximo mês">'+ic("chr")+'</button></div><div class="cg">'+["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(function(s){return"<span>"+s+"</span>"}).join("")+cells+"</div></div>";
  var l=S.ap.filter(function(a){return a.date===S.day&&(a.status==="agendado"||a.status==="realizado")}).sort(cmpA);
  var now=new Date(),nm=now.getHours()*60+now.getMinutes();
@@ -294,28 +384,42 @@ function patForm(p){
  var isNew=!p,d=p?okc(p.id):0;
  modal('<div class="row"><b style="font-size:1.1rem">'+(isNew?"Cadastrar paciente":"Editar paciente")+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div>"+
  '<div id="pf-err" class="hint err" hidden></div>'+
- '<div><label for="pf-n">Nome completo</label><input id="pf-n" autocomplete="off" placeholder="Ex.: Ana Pereira" value="'+esc(p?p.name:"")+'"></div>'+
- '<div><label for="pf-tel">Telefone</label><input id="pf-tel" type="tel" inputmode="tel" placeholder="(32) 99999-0000" value="'+esc(p?p.phone:"")+'"></div>'+
+ '<div><label for="pf-n">Nome completo</label><input id="pf-n" autocomplete="off" maxlength="80" placeholder="Ex.: Ana Pereira" value="'+esc(p?p.name:"")+'"></div>'+
+ '<div><label for="pf-tel">Telefone</label><input id="pf-tel" type="tel" inputmode="tel" maxlength="20" placeholder="(32) 99999-0000" value="'+esc(p?p.phone:"")+'"></div>'+
  (isNew?'<div class="two"><div><label for="pf-d">Data do 1º atendimento</label><input id="pf-d" type="date" value="'+isoOf(new Date(Date.now()+864e5))+'"></div><div><label for="pf-h">Horário</label><input id="pf-h" type="time" value="15:00"></div></div>'
   :'<div><label for="pf-h">Horário padrão das sessões</label><input id="pf-h" type="time" value="'+esc(p.default_time?hm(p.default_time):"15:00")+'"><div class="mute" style="margin-top:4px">Alterar este horário atualiza os atendimentos futuros já agendados.</div></div>')+
- '<div class="two"><div><label for="pf-v">Valor combinado (R$)</label><input id="pf-v" type="number" inputmode="decimal" min="0" step="0.01" value="'+(p?p.fee:600)+'"></div><div><label for="pf-t">Total de sessões</label><input id="pf-t" type="number" inputmode="numeric" min="1" value="'+(p?p.total_sessions:10)+'"></div></div>'+
+ '<div class="two"><div><label for="pf-v">Valor combinado (R$)</label><input id="pf-v" type="number" inputmode="decimal" min="0" max="1000000" step="0.01" value="'+(p?p.fee:600)+'"></div><div><label for="pf-t">Total de sessões</label><input id="pf-t" type="number" inputmode="numeric" min="1" max="999" value="'+(p?p.total_sessions:10)+'"></div></div>'+
  (isNew?"":'<div class="mute">Sessões já realizadas: <b>'+d+"</b>. O total não pode ser menor que isso.</div>")+
- '<div><label for="pf-o">Observação</label><textarea id="pf-o" rows="3" placeholder="Opcional">'+esc(p?p.notes:"")+"</textarea></div>"+
+ '<div><label for="pf-o">Observação</label><textarea id="pf-o" rows="3" maxlength="500" placeholder="Opcional">'+esc(p?p.notes:"")+"</textarea></div>"+
  '<button class="btn" id="pf-save">'+ic("chk")+(isNew?"Salvar paciente":"Salvar alterações")+"</button>");
  $("pf-save").onclick=async function(){
-  var er=$("pf-err"),nm=$("pf-n").value.trim(),tot=parseInt($("pf-t").value,10),fee=parseFloat($("pf-v").value)||0,hr=$("pf-h").value||"15:00";
+  var er=$("pf-err"),nm=$("pf-n").value.trim().slice(0,80),tot=parseInt($("pf-t").value,10),
+      fee=Math.max(0,Math.min(1e6,parseFloat($("pf-v").value)||0)),hr=$("pf-h").value||"15:00";
   function bad(t){er.textContent=t;er.hidden=false}
   if(!nm)return bad("Informe o nome do paciente.");
   if(!(tot>=1))return bad("Informe o total de sessões (mínimo 1).");
+  if(tot>999)return bad("O total de sessões deve ser no máximo 999.");
   if(tot<d)return bad("O total de sessões não pode ser menor que as já realizadas ("+d+").");
   var btn=this;btn.disabled=true;
   try{
-   var row={name:nm,phone:$("pf-tel").value.trim(),fee:fee,total_sessions:tot,default_time:hr,notes:$("pf-o").value.trim()};
+   var row={name:nm,phone:$("pf-tel").value.trim().slice(0,20),fee:fee,total_sessions:tot,default_time:hr,notes:$("pf-o").value.trim().slice(0,500)};
    if(isNew){var r=await sb.from("patients").insert(row).select().single();if(r.error)throw r.error;
-    var dt=$("pf-d").value;if(dt){var r2=await sb.from("appointments").insert({patient_id:r.data.id,date:dt,time:hr,duration:50,kind:"Sessão",reminder_min:30});if(r2.error)throw r2.error;S.day=dt;S.cm=new Date(parse(dt).getFullYear(),parse(dt).getMonth(),1)}
+    var dt=$("pf-d").value;
+    if(dt){
+     var r2=await sb.from("appointments").insert({patient_id:r.data.id,date:dt,time:hr,duration:50,kind:"Sessão",reminder_min:30});
+     if(r2.error){
+      /* Desfaz o paciente para não deixar cadastro pela metade se o 1º atendimento falhar. */
+      await sb.from("patients").delete().eq("id",r.data.id);
+      throw r2.error;
+     }
+     S.day=dt;S.cm=new Date(parse(dt).getFullYear(),parse(dt).getMonth(),1);
+    }
     await load();closeModal();go("paciente",r.data.id);toast("Paciente cadastrado.")}
    else{var r3=await sb.from("patients").update(row).eq("id",p.id);if(r3.error)throw r3.error;
-    if(hr!==hm(p.default_time||"")){var r4=await sb.from("appointments").update({time:hr}).eq("patient_id",p.id).eq("status","agendado");if(r4.error)throw r4.error}
+    if(hr!==hm(p.default_time||"")){
+     var r4=await sb.from("appointments").update({time:hr}).eq("patient_id",p.id).eq("status","agendado").gte("date",todayISO());
+     if(r4.error)throw r4.error
+    }
     await load();closeModal();render();toast("Paciente atualizado.")}
   }catch(e){bad("Erro ao salvar: "+errMsg(e));btn.disabled=false}}}
 
@@ -326,11 +430,11 @@ function apptForm(a,pid){
  modal('<div class="row"><b style="font-size:1.1rem">'+(isNew?"Novo atendimento":"Editar atendimento")+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div>"+
  '<div id="ap-err" class="hint err" hidden></div>'+
  '<div><label for="ap-p">Paciente</label><select id="ap-p">'+S.pts.map(function(x){return'<option value="'+x.id+'"'+(x.id===sel?" selected":"")+">"+esc(x.name)+"</option>"}).join("")+"</select></div>"+
- '<div class="two"><div><label for="ap-d">Data</label><input id="ap-d" type="date" value="'+dflt+'"></div><div><label for="ap-t">Horário</label><input id="ap-t" type="time" value="'+tm+'"></div></div>'+
+ '<div class="two"><div><label for="ap-d">Data</label><input id="ap-d" type="date" value="'+esc(dflt)+'"></div><div><label for="ap-t">Horário</label><input id="ap-t" type="time" value="'+esc(tm)+'"></div></div>'+
  '<div class="two"><div><label for="ap-du">Duração</label><select id="ap-du">'+[30,45,50,60,90].map(function(n){return"<option"+((a?a.duration:50)===n?" selected":"")+' value="'+n+'">'+n+" min</option>"}).join("")+'</select></div><div><label for="ap-k">Tipo</label><select id="ap-k">'+["Sessão","Avaliação","Retorno"].map(function(k){return"<option"+((a?a.kind:"Sessão")===k?" selected":"")+">"+k+"</option>"}).join("")+"</select></div></div>"+
  '<div><label>Avisar com antecedência de</label><div class="chips" id="ap-chips">'+[10,30,60].map(function(m){return'<button type="button" class="chip'+(m===lead?" on":"")+'" data-m="'+m+'">'+m+" min</button>"}).join("")+"</div></div>"+
  '<div class="hint" id="ap-hint"></div>'+
- '<div><label for="ap-o">Observação</label><textarea id="ap-o" rows="2" placeholder="Opcional">'+esc(a?a.note:"")+"</textarea></div>"+
+ '<div><label for="ap-o">Observação</label><textarea id="ap-o" rows="2" maxlength="500" placeholder="Opcional">'+esc(a?a.note:"")+"</textarea></div>"+
  '<button class="btn" id="ap-save">'+ic("chk")+"Salvar atendimento</button>"+(isNew?"":'<button class="btn danger" id="ap-del">'+ic("trs")+"Excluir atendimento</button>"));
  function hint(){$("ap-hint").innerHTML=ic("bel")+"Você receberá o lembrete às "+fmtMin(mins($("ap-t").value||"00:00")-lead)+" (com o site aberto)."}
  hint();$("ap-t").oninput=hint;
@@ -339,10 +443,10 @@ function apptForm(a,pid){
  $("ap-save").onclick=async function(){
   var er=$("ap-err"),d=$("ap-d").value,t=$("ap-t").value;
   if(!d||!t){er.textContent="Informe data e horário.";er.hidden=false;return}
-  var row={patient_id:$("ap-p").value,date:d,time:t,duration:+$("ap-du").value,kind:$("ap-k").value,reminder_min:lead,note:$("ap-o").value.trim()};
+  var row={patient_id:$("ap-p").value,date:d,time:t,duration:+$("ap-du").value,kind:$("ap-k").value,reminder_min:lead,note:$("ap-o").value.trim().slice(0,500)};
   this.disabled=true;
   try{var r=isNew?await sb.from("appointments").insert(row):await sb.from("appointments").update(row).eq("id",a.id);if(r.error)throw r.error;
-   await load();S.day=d;S.cm=new Date(parse(d).getFullYear(),parse(d).getMonth(),1);delete S.notified[a&&a.id];closeModal();render();toast(isNew?"Atendimento salvo. Lembrete programado.":"Atendimento atualizado.")}
+   await load();S.day=d;S.cm=new Date(parse(d).getFullYear(),parse(d).getMonth(),1);if(a&&a.id)delete S.notified[a.id];closeModal();render();toast(isNew?"Atendimento salvo. Lembrete programado.":"Atendimento atualizado.")}
   catch(e){er.textContent="Erro ao salvar: "+errMsg(e);er.hidden=false;this.disabled=false}};
  var dl=$("ap-del");if(dl)dl.onclick=function(){delAppt(a)}}
 
@@ -350,8 +454,10 @@ function delAppt(a){confirmBox("Excluir atendimento?","O registro será removido
 
 /* ---------------- ações sobre atendimento ---------------- */
 function openAppt(id){
- var a=getA(id);if(!a)return;var p=getP(a.patient_id),ag=a.status==="agendado";
- modal('<div class="row"><div><b style="font-size:1.1rem">'+esc(p.name)+'</b><div class="mute">'+dfull(a.date)+" · "+a.time+" · "+LAB[a.status]+'</div></div><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div>"+
+ var a=getA(id);if(!a)return;
+ var p=getP(a.patient_id);if(!p){toast("Paciente não encontrado. Atualize a página.");return}
+ var ag=a.status==="agendado";
+ modal('<div class="row"><div><b style="font-size:1.1rem">'+esc(p.name)+'</b><div class="mute">'+dfull(a.date)+" · "+esc(a.time)+" · "+LAB[a.status]+'</div></div><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div>"+
  (a.note?'<div class="mute">'+esc(a.note)+"</div>":"")+
  (ag?'<button class="act" data-a="ok"><span class="ic" style="background:var(--okbg);color:var(--ok)">'+ic("chk")+"</span>Marcar como realizada</button>"+
   '<button class="act" data-a="rem"><span class="ic" style="background:var(--rembg);color:var(--rem)">'+ic("rep")+"</span>Remarcar atendimento</button>"+
@@ -367,31 +473,36 @@ function openAppt(id){
   else reasonForm(a,k)}}
 
 async function markDone(id){
- var a=getA(id),p=getP(a.patient_id);
+ var a=getA(id);if(!a||a.status!=="agendado"||doneBusy[id])return;
+ var p=getP(a.patient_id);if(!p)return;
  if(okc(p.id)>=p.total_sessions){toast("Todas as sessões contratadas já foram realizadas. Aumente o total em Editar paciente.",4500);return}
+ doneBusy[id]=1;
  var n=okc(p.id)+1;
- var r=await run(sb.from("appointments").update({status:"realizado"}).eq("id",id));
- if(r)toast(p.name+": sessão "+n+" de "+p.total_sessions+" registrada."+(n===p.total_sessions?" Sessões finalizadas!":""),3500)}
+ try{
+  var r=await run(sb.from("appointments").update({status:"realizado"}).eq("id",id));
+  if(r)toast(p.name+": sessão "+n+" de "+p.total_sessions+" registrada."+(n===p.total_sessions?" Sessões finalizadas!":""),3500)
+ }finally{delete doneBusy[id]}
+}
 
 function reasonForm(a,k){
- var rem=k==="rem",nd=isoOf(new Date(parse(a.date).getTime()+864e5*7)),box=$("modal").querySelector(".box");
- box.innerHTML='<div class="grip"></div><div class="row"><b style="font-size:1.1rem">'+(rem?"Remarcar atendimento":"Cancelar atendimento")+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div><div class=\"mute\">Descreva o motivo para ficar registrado no histórico.</div>"+
+ var rem=k==="rem",nd=isoOf(new Date(parse(a.date).getTime()+864e5*7)),keep=a.note?a.note+" · ":"";
+ modal('<div class="row"><b style="font-size:1.1rem">'+(rem?"Remarcar atendimento":"Cancelar atendimento")+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+"</button></div><div class=\"mute\">Descreva o motivo para ficar registrado no histórico.</div>"+
  '<div id="rs-err" class="hint err" hidden></div>'+
- (rem?'<div class="two"><div><label for="rs-d">Nova data</label><input id="rs-d" type="date" value="'+nd+'"></div><div><label for="rs-h">Novo horário</label><input id="rs-h" type="time" value="'+a.time+'"></div></div>':"")+
- '<div><label for="rs-m">Motivo</label><textarea id="rs-m" rows="3" placeholder="Ex.: paciente viajou, imprevisto, doença..."></textarea></div>'+
+ (rem?'<div class="two"><div><label for="rs-d">Nova data</label><input id="rs-d" type="date" value="'+nd+'"></div><div><label for="rs-h">Novo horário</label><input id="rs-h" type="time" value="'+esc(a.time)+'"></div></div>':"")+
+ '<div><label for="rs-m">Motivo</label><textarea id="rs-m" rows="3" maxlength="300" placeholder="Ex.: paciente viajou, imprevisto, doença..."></textarea></div>'+
  '<div class="chips" id="rs-q"><button type="button" class="chip" data-q="Pedido do paciente.">Pedido do paciente</button><button type="button" class="chip" data-q="Imprevisto do profissional.">Imprevisto meu</button><button type="button" class="chip" data-q="Paciente doente.">Paciente doente</button></div>'+
- '<button class="btn" id="rs-ok">'+(rem?"Confirmar remarcação":"Confirmar cancelamento")+'</button><button class="btn sec" id="rs-back">Voltar</button>';
+ '<button class="btn" id="rs-ok">'+(rem?"Confirmar remarcação":"Confirmar cancelamento")+'</button><button class="btn sec" id="rs-back">Voltar</button>');
  $("rs-q").onclick=function(e){var q=e.target.closest("[data-q]");if(q)$("rs-m").value=q.dataset.q};
  $("rs-back").onclick=function(){openAppt(a.id)};
  $("rs-ok").onclick=async function(){
-  var m=$("rs-m").value.trim(),er=$("rs-err");this.disabled=true;
+  var m=$("rs-m").value.trim().slice(0,300),er=$("rs-err");this.disabled=true;
   try{
    if(rem){var d=$("rs-d").value,t=$("rs-h").value;if(!d||!t){er.textContent="Informe nova data e horário.";er.hidden=false;this.disabled=false;return}
-    var note="Remarcada para "+dmy(d)+" às "+t+"."+(m?" Motivo: "+m:"");
+    var note=keep+"Remarcada para "+dmy(d)+" às "+t+"."+(m?" Motivo: "+m:"");
     var r1=await sb.from("appointments").insert({patient_id:a.patient_id,date:d,time:t,duration:a.duration,kind:a.kind,reminder_min:a.reminder_min,note:a.note});if(r1.error)throw r1.error;
-    var r2=await sb.from("appointments").update({status:"remarcado",note:note}).eq("id",a.id);if(r2.error)throw r2.error;
+    var r2=await sb.from("appointments").update({status:"remarcado",note:note.slice(0,500)}).eq("id",a.id);if(r2.error)throw r2.error;
     S.day=d;S.cm=new Date(parse(d).getFullYear(),parse(d).getMonth(),1)}
-   else{var r3=await sb.from("appointments").update({status:"cancelado",note:"Cancelada."+(m?" Motivo: "+m:"")}).eq("id",a.id);if(r3.error)throw r3.error}
+   else{var note2=keep+"Cancelada."+(m?" Motivo: "+m:"");var r3=await sb.from("appointments").update({status:"cancelado",note:note2.slice(0,500)}).eq("id",a.id);if(r3.error)throw r3.error}
    await load();closeModal();render();toast(rem?"Atendimento remarcado.":"Atendimento cancelado.")
   }catch(e){er.textContent="Erro: "+errMsg(e);er.hidden=false;this.disabled=false}}}
 
@@ -402,13 +513,19 @@ function askNotif(){
  if(Notification.permission==="denied"){toast("Notificações bloqueadas nas configurações do navegador.",4000);return}
  Notification.requestPermission().then(function(p){toast(p==="granted"?"Avisos ativados.":"Permissão não concedida.")})}
 function checkRem(){
- if(!started)return;var n=new Date(),t=isoOf(n),nm=n.getHours()*60+n.getMinutes();
+ if(!started)return;var n=new Date(),t=isoOf(n),nm=n.getHours()*60+n.getMinutes(),alive={};
+ S.ap.forEach(function(a){if(a.status==="agendado")alive[a.id]=1});
+ Object.keys(S.notified).forEach(function(id){if(!alive[id])delete S.notified[id]});
  S.ap.forEach(function(a){if(a.status!=="agendado"||a.date!==t)return;var st=mins(a.time),ld=a.reminder_min||30;
   if(nm>=st-ld&&nm<st&&!S.notified[a.id]){S.notified[a.id]=1;var p=getP(a.patient_id),msg="Atendimento com "+(p?p.name:"paciente")+" às "+a.time+". Faltam "+(st-nm)+" min.";
    toast("🔔 "+msg,8000);try{if("Notification" in window&&Notification.permission==="granted")new Notification("Minha Agenda",{body:msg})}catch(e){}}})}
 setInterval(checkRem,30000);
 setInterval(function(){if(started&&S.view==="agenda"&&!$("modal").classList.contains("on"))renderAgenda()},60000);
-document.addEventListener("visibilitychange",function(){if(!document.hidden&&started){load().then(function(){if(!$("modal").classList.contains("on"))render();checkRem()}).catch(function(){})}});
+document.addEventListener("visibilitychange",function(){
+ if(document.hidden||!started)return;
+ load().then(function(){if(!$("modal").classList.contains("on"))render();checkRem()})
+ .catch(function(e){if(isAuthError(e))onAuthExpired()})
+});
 
 /* ---------------- delegação de cliques ---------------- */
 document.addEventListener("click",function(e){
@@ -428,7 +545,7 @@ document.addEventListener("click",function(e){
 function init(){
  var bt=$("boot");if(bt)bt.hidden=true;
  if(typeof supabase==="undefined"){document.body.innerHTML='<div style="padding:28px;font:16px system-ui">Não foi possível carregar a biblioteca do Supabase. Verifique sua conexão com a internet e recarregue a página.</div>';return}
- if(SUPABASE_URL.indexOf("COLE_AQUI")>=0||SUPABASE_KEY.indexOf("COLE_AQUI")>=0){$("setup").hidden=false;return}
+ if(typeof SUPABASE_URL!=="string"||typeof SUPABASE_KEY!=="string"||!SUPABASE_URL||!SUPABASE_KEY||SUPABASE_URL.indexOf("COLE_AQUI")>=0||SUPABASE_KEY.indexOf("COLE_AQUI")>=0){$("setup").hidden=false;return}
  /* Lê o link antes de criar o cliente (o Supabase consome e limpa a URL). */
  var link=parseAuthLink(),linkMsg=authLinkMessage(link),pending=recentRecoveryRequest(),
      linkRecovery=/recovery/i.test(link.type),
@@ -510,8 +627,7 @@ function openResetPassword(email){
  var eye='<svg class="eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'+
   '<svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 4.1-5.1M9.9 5.2A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a18.6 18.6 0 0 1-2.2 3.2M1 1l22 22"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/></svg>';
  var reqsHtml="";
- var REQ_TXT=[["len","Mínimo de 8 caracteres"],["num","Pelo menos 1 número"],["upper","1 letra maiúscula"],["esp","1 caractere especial"]];
- REQ_TXT.forEach(function(r){reqsHtml+='<li data-req="'+r[0]+'"><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#chk"/></svg></span>'+r[1]+'</li>'});
+ PW_RULES.forEach(function(r){reqsHtml+='<li data-req="'+r[0]+'"><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#chk"/></svg></span>'+r[1]+'</li>'});
  modal('<div class="rp">'+
   '<div class="rp-head"><span class="rp-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2.5"/></svg></span>'+
    '<div><h2>Definir nova senha</h2><p>Crie uma senha nova e segura para voltar a acessar sua agenda.</p></div></div>'+
@@ -519,13 +635,13 @@ function openResetPassword(email){
   '<div id="np-warn" class="hint" hidden></div>'+
   '<div id="np-err" class="hint err" role="alert" hidden></div>'+
   '<form class="rp-form" id="np-form" novalidate>'+
-   '<div class="rp-field"><label for="np">Nova senha</label><div class="rp-input"><input id="np" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Digite a nova senha"><button type="button" class="rp-eye" id="np-eye" aria-label="Mostrar senha" aria-pressed="false">'+eye+'</button></div></div>'+
+   '<div class="rp-field"><label for="np">Nova senha</label><div class="rp-input"><input id="np" type="password" maxlength="128" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Digite a nova senha"><button type="button" class="rp-eye" id="np-eye" aria-label="Mostrar senha" aria-pressed="false">'+eye+'</button></div></div>'+
    '<div class="rp-strength" id="np-strength" data-level="0">'+
     '<div class="rp-bars" aria-hidden="true"><i></i><i></i><i></i></div>'+
     '<div class="rp-strength-row"><span>Força da senha</span><b id="np-level" aria-live="polite">—</b></div>'+
     '<ul class="rp-reqs" id="np-reqs">'+reqsHtml+'</ul>'+
    '</div>'+
-   '<div class="rp-field"><label for="np2">Confirmar nova senha</label><div class="rp-input" id="np2-box"><input id="np2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Repita a nova senha"><button type="button" class="rp-eye" id="np2-eye" aria-label="Mostrar senha" aria-pressed="false">'+eye+'</button></div>'+
+   '<div class="rp-field"><label for="np2">Confirmar nova senha</label><div class="rp-input" id="np2-box"><input id="np2" type="password" maxlength="128" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Repita a nova senha"><button type="button" class="rp-eye" id="np2-eye" aria-label="Mostrar senha" aria-pressed="false">'+eye+'</button></div>'+
     '<div class="rp-match" id="np-match" aria-live="polite"><svg class="ic-ok" viewBox="0 0 24 24" aria-hidden="true"><use href="#chk"/></svg><svg class="ic-no" viewBox="0 0 24 24" aria-hidden="true"><use href="#xx"/></svg><span>As senhas precisam ser iguais.</span></div></div>'+
    '<button type="submit" class="rp-submit" id="np-ok" disabled><span class="rp-spin" aria-hidden="true"></span><span class="rp-submit-t">Salvar Nova Senha</span></button>'+
    '<p class="rp-foot"><button type="button" class="rp-back" id="np-cancel">Voltar para o Login</button></p>'+
@@ -534,22 +650,16 @@ function openResetPassword(email){
  var form=$("np-form"),btn=$("np-ok"),cancel=$("np-cancel"),er=$("np-err"),
   np=$("np"),np2=$("np2"),box2=$("np2-box"),match=$("np-match"),
   matchTxt=match.querySelector("span"),strength=$("np-strength"),level=$("np-level"),
-  reqsEl=$("np-reqs"),warn=$("np-warn"),label=btn.querySelector(".rp-submit-t");
+  reqsEl=$("np-reqs"),label=btn.querySelector(".rp-submit-t");
  function fail(t){er.textContent=t;er.hidden=false;if(er.scrollIntoView)try{er.scrollIntoView({block:"nearest"})}catch(e){}}
- var TESTS=[
-  ["len",function(v){return v.length>=8}],
-  ["num",function(v){return /\d/.test(v)}],
-  ["upper",function(v){return /[A-ZÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ]/.test(v)}],
-  ["esp",function(v){return /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~]/.test(v)}]
- ];
- function matches(v){var ok=true;TESTS.forEach(function(t){
-  var pass=t[1](v),li=reqsEl.querySelector('[data-req="'+t[0]+'"]');
+ function matches(v){var ok=true;PW_RULES.forEach(function(r){
+  var pass=r[2](v),li=reqsEl.querySelector('[data-req="'+r[0]+'"]');
   if(li)li.classList.toggle("ok",pass);
   if(!pass)ok=false;
  });return ok}
  function paint(){
   var v=np.value,v2=np2.value,all=matches(v),n=0;
-  TESTS.forEach(function(t){if(t[1](v))n++});
+  PW_RULES.forEach(function(r){if(r[2](v))n++});
   var lvl=!v.length?0:all?3:n>=2?2:1;
   strength.setAttribute("data-level",String(lvl));
   level.textContent=!v.length?"—":lvl===3?"Forte":lvl===2?"Média":"Fraca";
@@ -572,6 +682,7 @@ function openResetPassword(email){
  }
  setEye("np-eye",np);setEye("np2-eye",np2);
  async function save(){
+  if(btn.classList.contains("loading"))return;
   var v=np.value,v2=np2.value;
   if(!matches(v)){fail("A senha ainda não atende a todos os requisitos abaixo.");np.focus();return}
   if(v!==v2){fail("As senhas não conferem. Digite a mesma senha nos dois campos.");box2.classList.add("bad");np2.focus();return}
@@ -597,7 +708,12 @@ function openResetPassword(email){
    fail(resetPasswordError(errMsg(e)));
   }
  }
- form.addEventListener("submit",function(e){e.preventDefault();if(btn.disabled&&!er.textContent)fail("A senha ainda não atende a todos os requisitos abaixo.");save()});
+ form.addEventListener("submit",function(e){
+  e.preventDefault();
+  if(btn.classList.contains("loading"))return;
+  if(btn.disabled&&!er.textContent)fail("A senha ainda não atende a todos os requisitos abaixo.");
+  save()
+ });
  [np,np2].forEach(function(el){el.addEventListener("input",paint);el.addEventListener("keydown",function(e){
   if(e.key==="Enter"){e.preventDefault();save()}
  })});
