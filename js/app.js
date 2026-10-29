@@ -28,7 +28,7 @@ var LAB={realizado:"Realizada",cancelado:"Cancelada",remarcado:"Remarcada",agend
 
 var S={user:null,name:"",pts:[],ap:[],view:"agenda",pid:null,day:todayISO(),cm:null,filt:"all",q:"",notified:{}};
 S.cm=new Date(parse(S.day).getFullYear(),parse(S.day).getMonth(),1);
-var sb=null,started=false;
+var sb=null,started=false,recovering=false;
 
 var getP=function(id){return S.pts.filter(function(p){return p.id===id})[0]};
 var getA=function(id){return S.ap.filter(function(a){return a.id===id})[0]};
@@ -61,6 +61,49 @@ async function load(){
 }
 async function run(p,okMsg){try{var r=await p;if(r&&r.error)throw r.error;await load();render();if(okMsg)toast(okMsg);return r}catch(e){toast("Erro: "+errMsg(e),4000);return null}}
 
+/* ---------------- URL do app e links de autenticação ---------------- */
+/* URL pública usada como redirectTo no e-mail de recuperação de senha.
+   Prioriza APP_URL (js/config.js). Sem ela, usa o endereço atual quando o app
+   está em http/https. Em file:// não existe origem válida, então retorna "". */
+function appUrlConfigured(){return typeof APP_URL==="string"&&/^https?:\/\//i.test(APP_URL.trim())}
+function appBaseUrl(){
+ var raw="",u;
+ if(appUrlConfigured())raw=APP_URL.trim();
+ else{if(!/^https?:$/i.test(location.protocol))return "";raw=location.origin+location.pathname}
+ try{u=new URL(raw)}catch(e){return ""}
+ if(!/^https?:$/i.test(u.protocol))return "";
+ var p=u.pathname.replace(/\/index\.html?$/i,"/");
+ if(p.charAt(p.length-1)!=="/"){
+  if(p.split("/").pop().indexOf(".")>=0)p=p.replace(/[^/]*$/,"");
+  if(p.charAt(p.length-1)!=="/")p+="/";
+ }
+ return u.origin+p;
+}
+function isLocalUrl(u){try{var h=new URL(u).hostname;return h==="localhost"||h==="127.0.0.1"||h==="0.0.0.0"||h==="[::1]"||/\.local$/i.test(h)}catch(e){return false}}
+/* Lê os parâmetros que o Supabase devolve na URL (tokens e erros do link). */
+function parseAuthLink(){
+ var q=new URLSearchParams(location.search.replace(/^\?/,"")),
+     h=new URLSearchParams(location.hash.replace(/^#/,"")),
+     pick=function(k){return q.get(k)||h.get(k)||""};
+ return {err:pick("error"),code:pick("error_code"),desc:pick("error_description"),type:pick("type")};
+}
+function authLinkMessage(l){
+ var d=(l.code+" "+l.desc).toLowerCase();
+ if(/expired|expirad/.test(d))return "O link de recuperação expirou ou já foi usado. Peça um novo link em \"Esqueci minha senha\".";
+ if(l.err==="access_denied")return "O link do e-mail não pôde ser validado. Peça um novo link em \"Esqueci minha senha\".";
+ if(l.err)return "Não foi possível abrir o link do e-mail. Peça um novo link em \"Esqueci minha senha\".";
+ return "";
+}
+/* Remove os parâmetros de autenticação da barra de endereço (tokens/erros). */
+function cleanAuthUrl(){
+ try{
+  var q=new URLSearchParams(location.search);
+  ["error","error_code","error_description","code"].forEach(function(k){q.delete(k)});
+  var qs=q.toString(),hs=/access_token=|error=|error_description=|type=recovery/.test(location.hash)?"":location.hash;
+  history.replaceState(null,"",location.pathname+(qs?"?"+qs:"")+hs);
+ }catch(e){}
+}
+
 /* ---------------- auth ---------------- */
 var mode="login";
 function authMode(m){mode=m;var l=m==="login",c=m==="signup",f=m==="forgot";
@@ -78,12 +121,17 @@ $("authform").addEventListener("submit",async function(e){
  b.disabled=true;
  try{
   if(mode==="login"){var r=await sb.auth.signInWithPassword({email:em,password:pw});if(r.error)throw r.error}
-  else if(mode==="signup"){var nm=$("nm").value.trim().slice(0,60);
-   var r2=await sb.auth.signUp({email:em,password:pw,options:{data:{display_name:nm}}});if(r2.error)throw r2.error;
+  else if(mode==="signup"){var nm=$("nm").value.trim().slice(0,60),opts={data:{display_name:nm}},baseS=appBaseUrl();
+   if(baseS)opts.emailRedirectTo=baseS;
+   var r2=await sb.auth.signUp({email:em,password:pw,options:opts});if(r2.error)throw r2.error;
    var u2=r2.data&&r2.data.user;if(u2&&u2.identities&&u2.identities.length===0)throw new Error("User already registered");
    if(!(r2.data&&r2.data.session)){var r5=await sb.auth.signInWithPassword({email:em,password:pw});
     if(r5.error){if(/not confirmed/i.test(r5.error.message))throw new Error("CONFIRM_ON");throw r5.error}}}
-  else{var r3=await sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname});if(r3.error)throw r3.error;amsg("Link enviado. Verifique seu e-mail.","ok")}
+  else{var baseR=appBaseUrl();
+   if(!baseR){amsg("Não foi possível montar o link de recuperação: o app está aberto como arquivo local (file://). Publique o site ou preencha APP_URL em js/config.js.");b.disabled=false;return}
+   if(!appUrlConfigured()&&isLocalUrl(baseR))console.warn("[recuperação de senha] O link do e-mail apontará para "+baseR+". Em produção, preencha APP_URL em js/config.js e cadastre o endereço em Supabase → Authentication → URL Configuration.");
+   var r3=await sb.auth.resetPasswordForEmail(em,{redirectTo:baseR});if(r3.error)throw r3.error;
+   amsg("Link enviado para "+em+". Abra o e-mail e toque no link para definir a nova senha.","ok")}
  }catch(err){var m=errMsg(err);
   if(m==="CONFIRM_ON")m="Conta criada, mas o servidor ainda exige confirmação por e-mail. O administrador precisa desativar \"Confirm email\" no painel do Supabase (Authentication → Sign In / Providers → Email).";
   else if(/Invalid login/i.test(m))m="E-mail ou senha incorretos.";
@@ -357,17 +405,30 @@ function init(){
  var bt=$("boot");if(bt)bt.hidden=true;
  if(typeof supabase==="undefined"){document.body.innerHTML='<div style="padding:28px;font:16px system-ui">Não foi possível carregar a biblioteca do Supabase. Verifique sua conexão com a internet e recarregue a página.</div>';return}
  if(SUPABASE_URL.indexOf("COLE_AQUI")>=0||SUPABASE_KEY.indexOf("COLE_AQUI")>=0){$("setup").hidden=false;return}
+ /* Lê o link antes de criar o cliente (o Supabase consome e limpa a URL). */
+ var link=parseAuthLink(),linkMsg=authLinkMessage(link);
+ recovering=/recovery/i.test(link.type);
+ if(linkMsg)cleanAuthUrl();
  sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);authMode("login");
+ if(linkMsg)amsg(linkMsg);
  sb.auth.onAuthStateChange(function(ev,session){
   setTimeout(function(){
-   if(ev==="PASSWORD_RECOVERY"){newPass();return}
-   if(session&&session.user){if(!S.user||S.user.id!==session.user.id){S.user=session.user;startApp()}}
+   if(ev==="SIGNED_IN")recovering=false;
+   if(ev==="PASSWORD_RECOVERY"){recovering=true;cleanAuthUrl();showAuth();newPass();return}
+   if(session&&session.user){if(recovering){S.user=session.user;return}if(!S.user||S.user.id!==session.user.id){S.user=session.user;startApp()}}
    else if(ev==="SIGNED_OUT"||ev==="INITIAL_SESSION")showAuth()},0)});
 }
 function newPass(){
  modal('<b style="font-size:1.1rem">Definir nova senha</b><div id="np-err" class="hint err" hidden></div><div><label for="np">Nova senha</label><input id="np" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></div><button class="btn" id="np-ok">Salvar senha</button>');
- $("np-ok").onclick=async function(){var v=$("np").value;if(v.length<6){$("np-err").textContent="A senha precisa ter pelo menos 6 caracteres.";$("np-err").hidden=false;return}
-  var r=await sb.auth.updateUser({password:v});if(r.error){$("np-err").textContent=errMsg(r.error);$("np-err").hidden=false;return}closeModal();toast("Senha atualizada.")}}
+ $("np-ok").onclick=async function(){var v=$("np").value,er=$("np-err");if(v.length<6){er.textContent="A senha precisa ter pelo menos 6 caracteres.";er.hidden=false;return}
+  this.disabled=true;
+  var r=await sb.auth.updateUser({password:v});
+  if(r.error){er.textContent=errMsg(r.error);er.hidden=false;this.disabled=false;return}
+  closeModal();cleanAuthUrl();recovering=false;
+  var u=r.data&&r.data.user;
+  if(!u){try{var g=await sb.auth.getUser();u=g.data&&g.data.user}catch(e2){}}
+  if(u){S.user=u;toast("Senha atualizada. Você já está conectado.");startApp()}
+  else{showAuth();toast("Senha atualizada. Entre com a nova senha.")}}}
 try{init()}catch(e){var bx=$("boot");if(bx){bx.hidden=false;bx.innerHTML="<b>Erro ao iniciar</b><br><small>"+esc(errMsg(e))+"</small>"}}
 })();
 

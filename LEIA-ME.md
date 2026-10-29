@@ -31,7 +31,14 @@ O app é feito de `index.html` (estrutura), `css/style.css` (visual) e `js/` (co
 Suba a pasta inteira (`index.html`, `css/` e `js/`) em qualquer hospedagem de site estático (Netlify, Vercel, GitHub Pages, Cloudflare Pages). O endereço precisa ser **https**.
 
 ## 4. Autenticação
-Em **Authentication → URL Configuration**, ponha o endereço do seu site em **Site URL** e em **Redirect URLs** (usado pelo link de "Esqueci minha senha").
+Antes de publicar, habilite o retorno do link de recuperação de senha:
+1. Em **Authentication → URL Configuration**, ponha o endereço do site em **Site URL** (com `https` e barra no final, ex.: `https://meu-site.netlify.app/`).
+2. Em **Redirect URLs**, adicione o mesmo endereço e a variação com `/**` (ex.: `https://meu-site.netlify.app/**`). Para testar no Live Server, adicione também `http://localhost:5500/**`.
+3. Em `js/config.js`, preencha `APP_URL` com o endereço publicado. Sem isso, o link do e-mail pode apontar para `localhost` ou para uma URL inválida quando o app é aberto por `file://`.
+4. Em **Authentication → Email Templates → Reset Password**, mantenha o link como `{{ .ConfirmationURL }}`.
+
+O passo a passo completo, com diagnóstico de erros, está em [`docs/RECUPERACAO-SENHA.md`](./docs/RECUPERACAO-SENHA.md).
+
 Para a pessoa entrar **na hora** depois de criar a conta, desligue **Authentication → Sign In / Providers → Email → Confirm email**. Com isso o app faz o login automático e ninguém precisa abrir o e-mail.
 O nome informado no cadastro ("Como você gostaria de ser chamado?") fica salvo na tabela `profiles`, ligado à conta.
 
