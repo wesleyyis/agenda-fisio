@@ -133,6 +133,8 @@ $("auth-sw").onclick=function(){authMode(mode==="login"?"signup":"login")};
 $("auth-forgot").onclick=function(){authMode("forgot")};
 $("authform").addEventListener("submit",async function(e){
  e.preventDefault();var em=$("em").value.trim(),pw=$("pw").value,b=$("auth-go");
+ /* Login/cadastro manual encerra qualquer recuperação pendente. */
+ if(mode!=="forgot"&&(recovering||resetOpen)){recovering=false;resetOpen=false;modalLocked=false;markRecoveryFlow(false);clearRecoveryRequest();closeModal()}
  if(!em){amsg("Informe o e-mail.");return}
  if(mode==="signup"&&!$("nm").value.trim()){amsg("Informe como você gostaria de ser chamado.");$("nm").focus();return}
  if(mode!=="forgot"&&pw.length<6){amsg("A senha precisa ter pelo menos 6 caracteres.");return}
@@ -165,8 +167,11 @@ $("authform").addEventListener("submit",async function(e){
 function logout(){confirmBox("Sair da conta?","Você precisará entrar de novo neste aparelho.","Sair",async function(){await sb.auth.signOut()})}
 $("btn-out-d").onclick=logout;
 
-function showAuth(keepModal){started=false;S.user=null;$("app").hidden=true;$("auth").hidden=false;if(!keepModal)closeModal()}
+function showAuth(keepModal){started=false;if(!keepModal)S.user=null;$("app").hidden=true;$("auth").hidden=false;if(!keepModal){modalLocked=false;closeModal()}}
 async function startApp(){
+ /* Enquanto a recuperação de senha estiver em curso, o app nunca abre a Home.
+    Se algum evento do Supabase tentar entrar na agenda, voltamos ao formulário. */
+ if(recovering||resetOpen){openResetPassword();return}
  $("auth").hidden=true;$("app").hidden=false;setWho();
  try{await load()}catch(e){$("view").innerHTML='<div class="hint err">Não foi possível carregar os dados: '+esc(errMsg(e))+'. Confira se você executou o arquivo supabase.sql.</div>';return}
  await loadProfile();setWho();started=true;route();if(!S.name)askName(true)}
@@ -428,8 +433,9 @@ function init(){
  var link=parseAuthLink(),linkMsg=authLinkMessage(link),pending=recentRecoveryRequest(),
      linkRecovery=/recovery/i.test(link.type),
      codeRecovery=!link.type&&!!link.authCode&&!!pending;
- recovering=linkRecovery||codeRecovery||recoveryFlowActive();
+ recovering=!linkMsg&&(linkRecovery||codeRecovery||recoveryFlowActive());
  if(recovering)markRecoveryFlow(true);
+ else if(linkMsg){markRecoveryFlow(false);clearRecoveryRequest()}
  if(linkMsg)cleanAuthUrl();
  sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{detectSessionInUrl:true}});authMode("login");
  if(linkMsg)amsg(linkMsg);
@@ -455,15 +461,16 @@ function init(){
     return;
    }
    if(ev==="SIGNED_OUT"){
-    recovering=false;resetOpen=false;markRecoveryFlow(false);clearRecoveryRequest();showAuth();return;
+    /* A recuperação não pode ser cancelada por um SIGNED_OUT do próprio link:
+       a sessão temporária pode ser encerrada pelo Supabase durante a troca. */
+    if(recovering||resetOpen){showAuth(true);openResetPassword(session&&session.user&&session.user.email);return}
+    showAuth();return;
    }
    if(ev==="INITIAL_SESSION"){
-    if(resetOpen)return;
+    /* Enquanto a recuperação estiver ativa, o evento inicial não fecha o
+       formulário nem descarta a sessão do link. */
+    if(recovering||resetOpen){showAuth(true);openResetPassword(session&&session.user&&session.user.email);return}
     showAuth();
-    if(recovering){
-     recovering=false;markRecoveryFlow(false);authMode("login");
-     amsg(linkMsg||"O link de recuperação expirou ou já foi usado. Peça um novo link em \"Esqueci minha senha\".","err");
-    }
    }
   },0)});
 }
@@ -476,12 +483,17 @@ function resetPasswordError(m){
  return m;
 }
 function openResetPassword(email){
- if(resetOpen)return;
  email=email||(S.user&&S.user.email)||"";
+ if(resetOpen){
+  /* O formulário já está aberto: só completa o e-mail da conta se ele chegou depois. */
+  var acc=$("np-acc");
+  if(email&&acc&&acc.textContent.indexOf("@")<0){acc.innerHTML='Conta: <b>'+esc(email)+'</b>';acc.hidden=false}
+  return;
+ }
  resetOpen=true;modalLocked=true;
  showAuth(true);authMode("login");
  modal('<div class="row"><b style="font-size:1.1rem">Definir nova senha</b></div>'+
-  (email?'<div class="mute">Conta: <b>'+esc(email)+'</b></div>':'')+
+  '<div class="mute" id="np-acc"'+(email?"":" hidden")+'>Conta: <b>'+esc(email)+'</b></div>'+
   '<div class="mute">Crie uma nova senha para voltar a acessar sua agenda.</div>'+
   '<div id="np-err" class="hint err" hidden></div>'+
   '<div><label for="np">Nova senha</label><input id="np" type="password" autocomplete="new-password" minlength="6" placeholder="Mínimo 6 caracteres"></div>'+

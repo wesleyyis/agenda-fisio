@@ -55,7 +55,17 @@ aparecia. Havia três causas no frontend:
 3. O evento `INITIAL_SESSION`, que chega depois, chamava `showAuth()` e podia
    fechar o modal recém-aberto.
 
-A correção está descrita na secção 2.5.
+### 1.2. Terceiro problema: o formulário piscava e a Home abria
+
+Ainda era possível ver o formulário por um instante e ser levado para a Home.
+A causa era a **ordem imprevisível dos eventos** do Supabase: um `SIGNED_OUT`
+ou um `INITIAL_SESSION` sem sessão podia chegar depois do
+`PASSWORD_RECOVERY`, desligando a recuperação e liberando o `SIGNED_IN`
+seguinte para chamar `startApp()`.
+
+A correção (estado "sticky" + guarda no `startApp()`) está descrita na
+secção 2.6.
+
 
 ---
 
@@ -146,7 +156,9 @@ o endereço correto (antes ele usava o Site URL do painel).
   caracteres e a igualdade entre os campos, e não fecha por clique fora ou
   tecla Esc durante a recuperação.
 - Erros vindos do link (ex.: `otp_expired`) agora aparecem na tela em
-  português, em vez de a página abrir sem explicação.
+  português, em vez de a página abrir sem explicação. Quando a URL já traz um
+  erro, a recuperação nem começa (não abre um formulário que não poderia
+  salvar).
 - Ao salvar a nova senha:
   - a senha é atualizada via `sb.auth.updateUser({ password })`;
   - a URL é limpa (tokens não ficam no histórico do navegador);
@@ -156,6 +168,35 @@ o endereço correto (antes ele usava o Site URL do painel).
   - o usuário entra normalmente com a nova senha.
 - O botão **Cancelar e voltar ao login** encerra a recuperação e descarta a
   sessão temporária.
+
+### 2.6. `js/app.js` — recuperação "sticky" (correção do pisca e vai para a Home)
+
+Depois da primeira correção, o modal ainda aparecia por um instante e a Home
+abria em seguida. Causa: a ordem dos eventos do Supabase não é fixa. Um
+`SIGNED_OUT` (ou um `INITIAL_SESSION` sem sessão) podia chegar **depois** do
+`PASSWORD_RECOVERY`, zerar a flag `recovering` e permitir que o próximo
+`SIGNED_IN` chamasse `startApp()`.
+
+Regras atuais:
+
+- `recovering` é "sticky": só é desligado em três situações explícitas:
+  senha salva com sucesso, botão **Cancelar**, ou login/cadastro manual.
+- `SIGNED_OUT` durante a recuperação **não** derruba o formulário; ele apenas
+  mantém a tela de login com o modal aberto.
+- `INITIAL_SESSION` sem sessão durante a recuperação também não fecha o modal.
+- `startApp()` tem uma guarda: se `recovering` ou `resetOpen` estiverem ativos,
+  ele não abre a Home e reabre o formulário. Assim, nenhum evento do Supabase
+  consegue levar o usuário para a agenda no meio da recuperação.
+- O estado também fica marcado em `sessionStorage`
+  (`agendapro:recovery-flow`), então recarregar a página no meio da recuperação
+  mantém o formulário aberto.
+- Um login ou cadastro manual limpa esse estado, evitando que um modal antigo
+  apareça depois.
+
+> Se o link estiver expirado e o Supabase não devolver sessão, o formulário
+> pode ficar aberto, mas ao salvar o app mostra “A sessão do link expirou.
+> Peça um novo link…”. O botão **Cancelar** sempre volta ao login.
+
 
 ---
 
