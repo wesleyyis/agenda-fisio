@@ -28,7 +28,8 @@ var LAB={realizado:"Realizada",cancelado:"Cancelada",remarcado:"Remarcada",agend
 
 var S={user:null,name:"",pts:[],ap:[],view:"agenda",pid:null,day:todayISO(),cm:null,filt:"all",q:"",notified:{}};
 S.cm=new Date(parse(S.day).getFullYear(),parse(S.day).getMonth(),1);
-var sb=null,started=false,recovering=false;
+var sb=null,started=false,recovering=false,resetOpen=false,modalLocked=false;
+var RECOVERY_KEY="agendapro:recovery-request",RECOVERY_FLOW_KEY="agendapro:recovery-flow";
 
 var getP=function(id){return S.pts.filter(function(p){return p.id===id})[0]};
 var getA=function(id){return S.ap.filter(function(a){return a.id===id})[0]};
@@ -46,9 +47,9 @@ function errMsg(e){return(e&&e.message)?e.message:"Erro inesperado."}
 
 /* ---------------- modal helpers ---------------- */
 function modal(html){$("modal").innerHTML='<div class="box"><div class="grip"></div>'+html+'</div>';$("modal").classList.add("on")}
-function closeModal(){$("modal").classList.remove("on");$("modal").innerHTML=""}
-$("modal").addEventListener("click",function(e){if(e.target===$("modal"))closeModal()});
-document.addEventListener("keydown",function(e){if(e.key==="Escape")closeModal()});
+function closeModal(){$("modal").classList.remove("on");$("modal").innerHTML="";modalLocked=false}
+$("modal").addEventListener("click",function(e){if(e.target===$("modal")&&!modalLocked)closeModal()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!modalLocked)closeModal()});
 function confirmBox(title,text,label,fn){
  modal('<div class="row"><b>'+esc(title)+'</b><button class="ibtn" data-close aria-label="Fechar">'+ic("xx")+'</button></div><div class="mute">'+esc(text)+'</div><button class="btn danger" id="cf-yes">'+esc(label)+'</button><button class="btn sec" data-close>Voltar</button>');
  $("cf-yes").onclick=function(){this.disabled=true;Promise.resolve(fn()).then(closeModal).catch(function(e){toast(errMsg(e));closeModal()})}}
@@ -85,7 +86,33 @@ function parseAuthLink(){
  var q=new URLSearchParams(location.search.replace(/^\?/,"")),
      h=new URLSearchParams(location.hash.replace(/^#/,"")),
      pick=function(k){return q.get(k)||h.get(k)||""};
- return {err:pick("error"),code:pick("error_code"),desc:pick("error_description"),type:pick("type")};
+ return {err:pick("error"),code:pick("error_code"),desc:pick("error_description"),type:pick("type"),
+         authCode:pick("code"),tokenHash:pick("token_hash"),accessToken:pick("access_token")};
+}
+/* Guarda o pedido de recuperação para reconhecer também retornos com ?code=...,
+   que não trazem o parâmetro type=recovery. */
+function saveRecoveryRequest(email){
+ try{localStorage.setItem(RECOVERY_KEY,JSON.stringify({email:String(email||""),at:Date.now()}))}catch(e){}
+}
+function recentRecoveryRequest(){
+ try{
+  var raw=localStorage.getItem(RECOVERY_KEY);if(!raw)return null;
+  var d=JSON.parse(raw);
+  if(!d||typeof d.at!=="number"||Date.now()-d.at>7200000){localStorage.removeItem(RECOVERY_KEY);return null}
+  return d;
+ }catch(e){return null}
+}
+function clearRecoveryRequest(){try{localStorage.removeItem(RECOVERY_KEY)}catch(e){}}
+function markRecoveryFlow(on){try{if(on)sessionStorage.setItem(RECOVERY_FLOW_KEY,"1");else sessionStorage.removeItem(RECOVERY_FLOW_KEY)}catch(e){}}
+function recoveryFlowActive(){try{return sessionStorage.getItem(RECOVERY_FLOW_KEY)==="1"}catch(e){return false}}
+/* Remove os parâmetros de autenticação da barra de endereço (tokens/erros). */
+function cleanAuthUrl(){
+ try{
+  var q=new URLSearchParams(location.search);
+  ["error","error_code","error_description","code","token_hash","type"].forEach(function(k){q.delete(k)});
+  var qs=q.toString(),hs=/access_token=|error=|error_description=|type=recovery/.test(location.hash)?"":location.hash;
+  history.replaceState(null,"",location.pathname+(qs?"?"+qs:"")+hs);
+ }catch(e){}
 }
 function authLinkMessage(l){
  var d=(l.code+" "+l.desc).toLowerCase();
@@ -93,15 +120,6 @@ function authLinkMessage(l){
  if(l.err==="access_denied")return "O link do e-mail não pôde ser validado. Peça um novo link em \"Esqueci minha senha\".";
  if(l.err)return "Não foi possível abrir o link do e-mail. Peça um novo link em \"Esqueci minha senha\".";
  return "";
-}
-/* Remove os parâmetros de autenticação da barra de endereço (tokens/erros). */
-function cleanAuthUrl(){
- try{
-  var q=new URLSearchParams(location.search);
-  ["error","error_code","error_description","code"].forEach(function(k){q.delete(k)});
-  var qs=q.toString(),hs=/access_token=|error=|error_description=|type=recovery/.test(location.hash)?"":location.hash;
-  history.replaceState(null,"",location.pathname+(qs?"?"+qs:"")+hs);
- }catch(e){}
 }
 
 /* ---------------- auth ---------------- */
@@ -131,6 +149,7 @@ $("authform").addEventListener("submit",async function(e){
    if(!baseR){amsg("Não foi possível montar o link de recuperação: o app está aberto como arquivo local (file://). Publique o site ou preencha APP_URL em js/config.js.");b.disabled=false;return}
    if(!appUrlConfigured()&&isLocalUrl(baseR))console.warn("[recuperação de senha] O link do e-mail apontará para "+baseR+". Em produção, preencha APP_URL em js/config.js e cadastre o endereço em Supabase → Authentication → URL Configuration.");
    var r3=await sb.auth.resetPasswordForEmail(em,{redirectTo:baseR});if(r3.error)throw r3.error;
+   saveRecoveryRequest(em);
    amsg("Link enviado para "+em+". Abra o e-mail e toque no link para definir a nova senha.","ok")}
  }catch(err){var m=errMsg(err);
   if(m==="CONFIRM_ON")m="Conta criada, mas o servidor ainda exige confirmação por e-mail. O administrador precisa desativar \"Confirm email\" no painel do Supabase (Authentication → Sign In / Providers → Email).";
@@ -146,7 +165,7 @@ $("authform").addEventListener("submit",async function(e){
 function logout(){confirmBox("Sair da conta?","Você precisará entrar de novo neste aparelho.","Sair",async function(){await sb.auth.signOut()})}
 $("btn-out-d").onclick=logout;
 
-function showAuth(){started=false;S.user=null;$("app").hidden=true;$("auth").hidden=false;closeModal()}
+function showAuth(keepModal){started=false;S.user=null;$("app").hidden=true;$("auth").hidden=false;if(!keepModal)closeModal()}
 async function startApp(){
  $("auth").hidden=true;$("app").hidden=false;setWho();
  try{await load()}catch(e){$("view").innerHTML='<div class="hint err">Não foi possível carregar os dados: '+esc(errMsg(e))+'. Confira se você executou o arquivo supabase.sql.</div>';return}
@@ -406,29 +425,107 @@ function init(){
  if(typeof supabase==="undefined"){document.body.innerHTML='<div style="padding:28px;font:16px system-ui">Não foi possível carregar a biblioteca do Supabase. Verifique sua conexão com a internet e recarregue a página.</div>';return}
  if(SUPABASE_URL.indexOf("COLE_AQUI")>=0||SUPABASE_KEY.indexOf("COLE_AQUI")>=0){$("setup").hidden=false;return}
  /* Lê o link antes de criar o cliente (o Supabase consome e limpa a URL). */
- var link=parseAuthLink(),linkMsg=authLinkMessage(link);
- recovering=/recovery/i.test(link.type);
+ var link=parseAuthLink(),linkMsg=authLinkMessage(link),pending=recentRecoveryRequest(),
+     linkRecovery=/recovery/i.test(link.type),
+     codeRecovery=!link.type&&!!link.authCode&&!!pending;
+ recovering=linkRecovery||codeRecovery||recoveryFlowActive();
+ if(recovering)markRecoveryFlow(true);
  if(linkMsg)cleanAuthUrl();
- sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);authMode("login");
+ sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{detectSessionInUrl:true}});authMode("login");
  if(linkMsg)amsg(linkMsg);
  sb.auth.onAuthStateChange(function(ev,session){
   setTimeout(function(){
-   if(ev==="SIGNED_IN")recovering=false;
-   if(ev==="PASSWORD_RECOVERY"){recovering=true;cleanAuthUrl();showAuth();newPass();return}
-   if(session&&session.user){if(recovering){S.user=session.user;return}if(!S.user||S.user.id!==session.user.id){S.user=session.user;startApp()}}
-   else if(ev==="SIGNED_OUT"||ev==="INITIAL_SESSION")showAuth()},0)});
+   /* O link pode disparar PASSWORD_RECOVERY ou apenas SIGNED_IN (por exemplo
+      em retornos com ?code=...). Os dois casos precisam abrir o formulário. */
+   if(ev==="PASSWORD_RECOVERY"){
+    recovering=true;markRecoveryFlow(true);
+    if(session&&session.user)S.user=session.user;
+    showAuth(true);cleanAuthUrl();openResetPassword(session&&session.user&&session.user.email);return;
+   }
+   if(ev==="SIGNED_IN"){
+    if(recovering&&session&&session.user){
+     S.user=session.user;showAuth(true);cleanAuthUrl();openResetPassword(session.user.email);return;
+    }
+    if(session&&session.user&&(!S.user||S.user.id!==session.user.id)){S.user=session.user;startApp()}
+    return;
+   }
+   if(session&&session.user){
+    if(recovering){S.user=session.user;showAuth(true);openResetPassword(session.user.email);return}
+    if(!S.user||S.user.id!==session.user.id){S.user=session.user;startApp()}
+    return;
+   }
+   if(ev==="SIGNED_OUT"){
+    recovering=false;resetOpen=false;markRecoveryFlow(false);clearRecoveryRequest();showAuth();return;
+   }
+   if(ev==="INITIAL_SESSION"){
+    if(resetOpen)return;
+    showAuth();
+    if(recovering){
+     recovering=false;markRecoveryFlow(false);authMode("login");
+     amsg(linkMsg||"O link de recuperação expirou ou já foi usado. Peça um novo link em \"Esqueci minha senha\".","err");
+    }
+   }
+  },0)});
 }
-function newPass(){
- modal('<b style="font-size:1.1rem">Definir nova senha</b><div id="np-err" class="hint err" hidden></div><div><label for="np">Nova senha</label><input id="np" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></div><button class="btn" id="np-ok">Salvar senha</button>');
- $("np-ok").onclick=async function(){var v=$("np").value,er=$("np-err");if(v.length<6){er.textContent="A senha precisa ter pelo menos 6 caracteres.";er.hidden=false;return}
-  this.disabled=true;
-  var r=await sb.auth.updateUser({password:v});
-  if(r.error){er.textContent=errMsg(r.error);er.hidden=false;this.disabled=false;return}
-  closeModal();cleanAuthUrl();recovering=false;
-  var u=r.data&&r.data.user;
-  if(!u){try{var g=await sb.auth.getUser();u=g.data&&g.data.user}catch(e2){}}
-  if(u){S.user=u;toast("Senha atualizada. Você já está conectado.");startApp()}
-  else{showAuth();toast("Senha atualizada. Entre com a nova senha.")}}}
+function resetPasswordError(m){
+ if(/Auth session missing|session.*missing|JWT|not authenticated|invalid.*session/i.test(m))return "A sessão do link expirou. Peça um novo link em \"Esqueci minha senha\".";
+ if(/different from the old|same password|should be different/i.test(m))return "A nova senha precisa ser diferente da senha atual.";
+ if(/at least \d+ characters|weak password|Password should/i.test(m))return "A senha precisa ter pelo menos 6 caracteres.";
+ if(/rate limit|too many|security purposes/i.test(m))return "Muitas tentativas. Aguarde alguns minutos e tente de novo.";
+ if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Sem conexão com a internet. Verifique e tente de novo.";
+ return m;
+}
+function openResetPassword(email){
+ if(resetOpen)return;
+ email=email||(S.user&&S.user.email)||"";
+ resetOpen=true;modalLocked=true;
+ showAuth(true);authMode("login");
+ modal('<div class="row"><b style="font-size:1.1rem">Definir nova senha</b></div>'+
+  (email?'<div class="mute">Conta: <b>'+esc(email)+'</b></div>':'')+
+  '<div class="mute">Crie uma nova senha para voltar a acessar sua agenda.</div>'+
+  '<div id="np-err" class="hint err" hidden></div>'+
+  '<div><label for="np">Nova senha</label><input id="np" type="password" autocomplete="new-password" minlength="6" placeholder="Mínimo 6 caracteres"></div>'+
+  '<div><label for="np2">Confirmar nova senha</label><input id="np2" type="password" autocomplete="new-password" minlength="6" placeholder="Repita a nova senha"></div>'+
+  '<button class="btn" id="np-ok">Salvar nova senha</button>'+
+  '<button class="btn sec" id="np-cancel">Cancelar e voltar ao login</button>');
+ var btn=$("np-ok"),cancel=$("np-cancel"),er=$("np-err");
+ function fail(t){er.textContent=t;er.hidden=false}
+ async function save(){
+  var v=$("np").value,v2=$("np2").value;
+  er.hidden=true;
+  if(v.length<6){fail("A senha precisa ter pelo menos 6 caracteres.");$("np").focus();return}
+  if(v!==v2){fail("As senhas não conferem. Digite a mesma senha nos dois campos.");$("np2").focus();return}
+  btn.disabled=true;cancel.disabled=true;
+  try{
+   var r=await sb.auth.updateUser({password:v});
+   if(r.error)throw r.error;
+   var em=(r.data&&r.data.user&&r.data.user.email)||email;
+   resetOpen=false;recovering=false;markRecoveryFlow(false);clearRecoveryRequest();cleanAuthUrl();closeModal();
+   try{await sb.auth.signOut()}catch(e2){}
+   showAuth();authMode("login");
+   if(em)$("em").value=em;
+   $("pw").value="";
+   amsg("Senha alterada com sucesso! Entre com a nova senha.","ok");
+   toast("Senha alterada com sucesso!");
+   setTimeout(function(){var p=$("pw");if(p)p.focus()},80);
+  }catch(e){
+   fail(resetPasswordError(errMsg(e)));
+   btn.disabled=false;cancel.disabled=false;
+  }
+ }
+ cancel.onclick=async function(){
+  if(!resetOpen)return;
+  resetOpen=false;recovering=false;markRecoveryFlow(false);clearRecoveryRequest();cleanAuthUrl();closeModal();
+  try{await sb.auth.signOut()}catch(e2){}
+  showAuth();authMode("login");
+  toast("Recuperação cancelada. Peça um novo link quando quiser.");
+ };
+ btn.onclick=save;
+ ["np","np2"].forEach(function(id){$(id).addEventListener("keydown",function(e){
+  if(e.key==="Enter"){e.preventDefault();save()}
+ })});
+ setTimeout(function(){var p=$("np");if(p)p.focus()},50);
+}
 try{init()}catch(e){var bx=$("boot");if(bx){bx.hidden=false;bx.innerHTML="<b>Erro ao iniciar</b><br><small>"+esc(errMsg(e))+"</small>"}}
 })();
 

@@ -41,6 +41,22 @@ Ou seja, existiam **duas falhas somadas**:
 > estão certas. Alterar apenas o código não resolve se o painel do Supabase
 > continuar apontando para `localhost`.
 
+### 1.1. Segundo problema: o link abria o app, mas não mostrava o formulário
+
+Depois de corrigir o redirecionamento, o link passou a voltar para
+`https://agendaprox.netlify.app/`, mas o modal **“Definir nova senha”** não
+aparecia. Havia três causas no frontend:
+
+1. O código só abria o formulário no evento `PASSWORD_RECOVERY`. Em alguns
+   retornos (por exemplo, `?code=...`), o Supabase dispara apenas
+   `SIGNED_IN`, e o app entrava direto na agenda.
+2. O evento `SIGNED_IN` zerava a flag `recovering`, então a sessão temporária
+   era tratada como um login normal.
+3. O evento `INITIAL_SESSION`, que chega depois, chamava `showAuth()` e podia
+   fechar o modal recém-aberto.
+
+A correção está descrita na secção 2.5.
+
 ---
 
 ## 2. O que foi alterado
@@ -74,7 +90,7 @@ Novo bloco **“URL do app e links de autenticação”**, logo antes da seção
 | `appUrlConfigured()` | Diz se `APP_URL` foi preenchida com uma URL `http(s)` válida. |
 | `appBaseUrl()` | Monta a URL pública canônica. Prioriza `APP_URL`; sem ela, usa `location.origin + location.pathname`. Remove `?query`, `#hash` e `index.html`, garantindo a barra final. Retorna `""` em `file://` (onde não existe origem válida). |
 | `isLocalUrl(url)` | Detecta `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]` e `*.local`. |
-| `parseAuthLink()` | Lê `error`, `error_code`, `error_description` e `type` da URL (query e hash), antes de o Supabase consumir os tokens. |
+| `parseAuthLink()` | Lê `error`, `error_code`, `error_description`, `type`, `code`, `token_hash` e `access_token` da URL (query e hash), antes de o Supabase consumir os tokens. |
 | `authLinkMessage(link)` | Traduz os erros do link para mensagens claras em português (link expirado, link inválido etc.). |
 | `cleanAuthUrl()` | Remove tokens e erros de autenticação da barra de endereço, mantendo a rota normal do app. |
 
@@ -119,15 +135,27 @@ o endereço correto (antes ele usava o Site URL do painel).
   biblioteca consome e limpa os tokens da URL.
 - O estado `recovering` impede que a sessão temporária do link abra o app
   antes de a nova senha ser definida.
-- Ao receber `PASSWORD_RECOVERY`, o app mostra a tela de login e abre o modal
-  **“Definir nova senha”**.
+- O formulário abre tanto com o evento `PASSWORD_RECOVERY` quanto com
+  `SIGNED_IN` quando a URL indica recuperação. Isso cobre os dois formatos de
+  retorno do Supabase (hash com `type=recovery` e `?code=...`).
+- Se o evento inicial (`INITIAL_SESSION`) chegar depois, ele não fecha mais o
+  modal.
+- Em retornos com `?code=...` sem `type=recovery`, o app reconhece o pedido
+  guardado no navegador (válido por 2 horas) e abre o formulário.
+- O modal tem **Nova senha** e **Confirmar nova senha**, valida o mínimo de 6
+  caracteres e a igualdade entre os campos, e não fecha por clique fora ou
+  tecla Esc durante a recuperação.
 - Erros vindos do link (ex.: `otp_expired`) agora aparecem na tela em
   português, em vez de a página abrir sem explicação.
 - Ao salvar a nova senha:
   - a senha é atualizada via `sb.auth.updateUser({ password })`;
   - a URL é limpa (tokens não ficam no histórico do navegador);
-  - o usuário é levado ao app já conectado (ou à tela de login, se a sessão
-    não puder ser confirmada).
+  - a sessão de recuperação é encerrada;
+  - o app volta à tela de login com o e-mail preenchido e exibe
+    **“Senha alterada com sucesso! Entre com a nova senha.”**;
+  - o usuário entra normalmente com a nova senha.
+- O botão **Cancelar e voltar ao login** encerra a recuperação e descarta a
+  sessão temporária.
 
 ---
 
@@ -356,9 +384,10 @@ Depois de configurar, faça um teste e confira o resultado em
 3. Clique em **Esqueci minha senha**, informe o e-mail e envie.
 4. Abra o e-mail e clique no link.
 5. O navegador deve abrir o app e exibir o modal **Definir nova senha**.
-6. Informe a nova senha (mínimo 6 caracteres) e salve.
-7. O app deve entrar já conectado. Saia e entre novamente com a nova senha
-   para confirmar.
+6. Informe a nova senha e a confirmação (mínimo 6 caracteres) e salve.
+7. O app deve mostrar **“Senha alterada com sucesso!”**, voltar ao login com
+   o e-mail preenchido e pedir a nova senha.
+8. Entre com a nova senha para confirmar.
 
 Dica: a barra de endereço do link deve começar com a URL de produção, por
 exemplo:
