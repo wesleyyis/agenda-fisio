@@ -440,12 +440,39 @@ https://agendaprox.netlify.app/#access_token=...&type=recovery
 Se começar com `http://localhost...`, o problema ainda está no **Site URL** do
 painel do Supabase.
 
+### 4.1. O que conta como “publicado” (Netlify + GitHub)
+
+O site de produção (`agendaprox.netlify.app`) é publicado a partir do branch
+**`main`** do repositório. Commits em outros branches (por exemplo,
+`tela_recuperação`) **não** vão para o ar, mesmo que já estejam no GitHub.
+
+Antes de testar, confirme que o `main` está atualizado:
+
+```powershell
+git checkout main
+git merge --ff-only origin/NOME-DO-BRANCH
+git push origin main
+```
+
+O Netlify publica em poucos segundos. Para conferir se o código novo chegou
+(abra no navegador ou use `Invoke-WebRequest`):
+
+```
+https://agendaprox.netlify.app/js/app.js?x=1
+```
+
+O arquivo publicado deve conter a frase `app nunca abre a Home` (comentário da
+guarda do `startApp()`). Se não contiver, o deploy ainda é o antigo.
+
+> Um teste feito antes do deploy usa o código antigo e não valida a correção.
+
 ---
 
 ## 5. Resolução de problemas
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
+| Correção feita, mas o site continua com o comportamento antigo | O Netlify publica o branch `main`; a correção ficou em outro branch | Fazer merge/push para o `main` e conferir `js/app.js` publicado (secção 4.1) |
 | Link abre em `localhost` | **Site URL** do Supabase ainda é local, ou `redirectTo` não está em **Redirect URLs** | Corrigir as duas configurações (seção 3) |
 | Link abre em “URL inválida” / página em branco | App aberto por `file://` na hora de pedir o link | Publicar o site ou preencher `APP_URL` |
 | “O link de recuperação expirou ou já foi usado” | Link com mais de 1 hora ou já utilizado | Pedir um novo link |
