@@ -21,7 +21,7 @@ Aplicação web para profissionais organizarem pacientes, atendimentos e sessõe
 1. Crie um projeto no [Supabase](https://supabase.com).
 2. Execute o conteúdo de [`supabase.sql`](./supabase.sql) no SQL Editor do projeto.
 3. Configure a URL do projeto e a chave pública `anon`/`publishable` em [`js/config.js`](./js/config.js). Nunca use a chave `service_role` no navegador.
-4. No mesmo arquivo, preencha `APP_URL` com o endereço público do site (ex.: `https://meu-site.netlify.app/`) para o link de recuperação de senha funcionar. Detalhes em [`docs/RECUPERACAO-SENHA.md`](./docs/RECUPERACAO-SENHA.md).
+4. No mesmo arquivo, preencha `APP_URL` com o endereço público do site (`https://agendaprox.netlify.app/` neste projeto) para o link de recuperação de senha funcionar. Detalhes em [`docs/RECUPERACAO-SENHA.md`](./docs/RECUPERACAO-SENHA.md).
 5. Sirva a pasta do projeto por um servidor local, como a extensão Live Server do VS Code, ou publique os arquivos em uma hospedagem estática com HTTPS.
 
 Para ver o passo a passo completo, incluindo autenticação, publicação e uso no celular, consulte [`LEIA-ME.md`](./LEIA-ME.md).

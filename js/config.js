@@ -5,7 +5,7 @@ var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 
 /* ===== URL PÚBLICA DO APP (usada no link de recuperação de senha) =====
    Coloque aqui o endereço definitivo do site, com https e barra no final.
-   Exemplo: var APP_URL = "https://minha-agenda.netlify.app/";
+   Exemplo: var APP_URL = "https://agendaprox.netlify.app/";
 
    - Deixe vazio ("") para o app usar automaticamente o endereço da página
      (funciona quando o site é aberto por http/https, ex.: hospedagem).

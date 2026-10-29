@@ -58,7 +58,7 @@ var APP_URL = "";
 - **Preenchido:** use o endereço definitivo, com `https` e barra no final:
 
   ```js
-  var APP_URL = "https://minha-agenda.netlify.app/";
+  var APP_URL = "https://agendaprox.netlify.app/";
   ```
 
 Essa é a URL enviada ao Supabase como `redirectTo` no e-mail de recuperação
@@ -159,7 +159,7 @@ Atalhos do seu projeto (ref. `xapteyatswdtmuuzqbiu`):
 Coloque o endereço **publicado** do app, sempre com `https` e barra final:
 
 ```
-https://minha-agenda.netlify.app/
+https://agendaprox.netlify.app/
 ```
 
 > É esse valor que o Supabase usa quando o `redirectTo` não é aceito. Se ele
@@ -177,8 +177,8 @@ Atenção ao subcaminho: no GitHub Pages o app costuma ficar em
 Adicione as URLs permitidas (uma por linha):
 
 ```
-https://minha-agenda.netlify.app/
-https://minha-agenda.netlify.app/**
+https://agendaprox.netlify.app/
+https://agendaprox.netlify.app/**
 http://localhost:5500/**
 ```
 
@@ -210,7 +210,7 @@ token e respeita o `redirectTo`; o segundo leva apenas para a raiz do site.
 Preencha a mesma URL pública:
 
 ```js
-var APP_URL = "https://minha-agenda.netlify.app/";
+var APP_URL = "https://agendaprox.netlify.app/";
 ```
 
 ### 3.5. Envio de e-mails (SMTP)
@@ -223,10 +223,118 @@ O serviço de e-mail embutido do Supabase é **só para testes**:
 - limite de **2 e-mails por hora**;
 - sem garantia de entrega.
 
-Em produção, habilite um SMTP próprio (Resend, SendGrid, Brevo, Amazon SES
-etc.) com host, porta, usuário, senha e remetente `no-reply@seudominio.com`.
-Sem isso, usuários reais recebem o erro **“Email address not authorized”** ou
-não recebem nada.
+Em produção, habilite um SMTP próprio. Sem isso, usuários reais recebem o erro
+**“Email address not authorized”** ou não recebem nada.
+
+#### Receita com Resend
+
+**No Resend (https://resend.com):**
+
+1. **Domains → Add Domain** e cadastre um domínio que você controla
+   (ex.: `agendaprox.com`). O subdomínio `agendaprox.netlify.app` **não serve**,
+   porque você não controla o DNS dele.
+2. Copie os registos DNS que o Resend mostra (SPF/TXT, DKIM e, se quiser,
+   DMARC) e cadastre no seu provedor de domínio.
+3. Aguarde o estado **Verified**.
+4. **API Keys → Create API Key**, permissão de **Sending access**. Guarde a
+   chave `re_...` (ela só aparece uma vez).
+
+**No Supabase → Authentication → SMTP Settings:**
+
+| Campo | Valor |
+|---|---|
+| Enable Custom SMTP | ligado |
+| Host | `smtp.resend.com` |
+| Port | `465` (SSL) — recomendado pelo Resend; `587` (STARTTLS) como alternativa |
+| Username | `resend` |
+| Password | a API key `re_...` |
+| Sender email | `no-reply@SEU-DOMINIO-VERIFICADO` |
+| Sender name | `Minha Agenda` |
+
+Clique em **Save**. A partir daí, o Supabase envia para **qualquer** endereço
+(limite padrão de 30 e-mails/hora, ajustável em **Rate Limits**).
+
+> `onboarding@resend.dev` só entrega para o e-mail dono da conta Resend.
+> Para várias pessoas, é obrigatório verificar um domínio próprio.
+
+#### Por que `agendaprox.netlify.app` não serve?
+
+O Resend exige que você prove que controla o domínio de envio, adicionando
+registos DNS (MX, SPF e DKIM). Você **não controla o DNS de `netlify.app`** —
+ele pertence ao Netlify —, então o domínio nunca fica `Verified` e o Supabase
+devolve **“Error sending recovery email”**.
+
+Isso **não obriga** a mudar o site: o app pode continuar em
+`https://agendaprox.netlify.app/`. Só o **remetente do e-mail** precisa usar um
+domínio próprio, por exemplo:
+
+- `no-reply@agendaprox.com` (domínio raiz verificado), ou
+- `no-reply@mail.agendaprox.com` (subdomínio só para envio — recomendado para
+  separar a reputação de envio).
+
+Enquanto não tiver domínio próprio, o único teste possível com o Resend é usar
+`onboarding@resend.dev` **enviando para o e-mail dono da conta Resend**.
+
+Alternativa temporária sem comprar domínio: provedores que permitem verificar
+apenas um remetente (ex.: SendGrid Single Sender ou Brevo). Funciona para
+testar, mas a entrega é pior e não é recomendado para muitos usuários.
+
+#### Alternativa sem domínio próprio (temporária)
+
+**Gmail SMTP — recomendado enquanto não houver domínio**
+
+Use uma conta Gmail (de preferência **dedicada ao app**, não a pessoal):
+
+| Campo | Valor |
+|---|---|
+| Host | `smtp.gmail.com` |
+| Port | `465` (SSL) |
+| Username | `seuapp@gmail.com` |
+| Password | **senha de app** de 16 caracteres (não é a senha normal) |
+| Sender email | `seuapp@gmail.com` |
+| Sender name | `Minha Agenda` |
+
+Como gerar a senha de app:
+
+1. Ative a **verificação em duas etapas** em
+   https://myaccount.google.com/security.
+2. Abra https://myaccount.google.com/apppasswords.
+3. Crie uma senha para “Mail” e copie os 16 caracteres.
+4. Cole em **Password** no Supabase e clique em **Save**.
+
+> Ao salvar com `smtp.gmail.com`, o Supabase mostra o aviso
+> **“Check your SMTP provider”** (“designed for sending personal rather than
+> transactional email messages”). É **apenas um alerta**, não um bloqueio:
+> confirme e salve. Ele só lembra que o Gmail não é um serviço de e-mail
+> transacional — por isso use uma conta dedicada, mantenha o volume baixo e
+> migre para o Resend quando tiver um domínio.
+
+Vantagens: não precisa de domínio, a entrega é boa (o Gmail assina com
+DKIM/SPF do próprio gmail.com) e o limite é de cerca de **500 destinatários por
+dia**. Desvantagens: usa uma conta Google, tem limite diário e não é indicado
+para volumes grandes — quando tiver um domínio, migre para o Resend.
+
+**Verificação de remetente único (SendGrid ou Brevo)**
+
+Permitem verificar um e-mail (ex.: um Gmail) sem domínio. Porém, ao enviar
+“de” um Gmail através de outro provedor, a autenticação DMARC não alinha e a
+mensagem cai facilmente em spam. Serve só para testes rápidos.
+
+**O que não resolve**
+
+- `onboarding@resend.dev`: só entrega para o e-mail dono da conta Resend.
+- SMTP embutido do Supabase: só para o time do projeto e 2 e-mails/hora.
+- Verificar `agendaprox.netlify.app` no Resend: impossível (DNS do Netlify).
+
+**Domínio grátis (para quando quiser migrar)**
+
+- **EU.org** (https://nic.eu.org): domínio gratuito com DNS completo, mas a
+  aprovação é manual e pode demorar semanas.
+- **GitHub Student Developer Pack**: se você for estudante, inclui um `.me`
+  grátis por 1 ano na Namecheap.
+
+Depois de configurar, faça um teste e confira o resultado em
+**Resend → Emails** (entregue, bounced, spam etc.).
 
 ### 3.6. Limites de envio (Rate Limits)
 
@@ -256,7 +364,7 @@ Dica: a barra de endereço do link deve começar com a URL de produção, por
 exemplo:
 
 ```
-https://minha-agenda.netlify.app/#access_token=...&type=recovery
+https://agendaprox.netlify.app/#access_token=...&type=recovery
 ```
 
 Se começar com `http://localhost...`, o problema ainda está no **Site URL** do
@@ -274,6 +382,7 @@ painel do Supabase.
 | Link abre o app, mas não aparece o modal | `redirectTo` caiu em outra página/aba | Conferir **Redirect URLs** e o template do e-mail |
 | Erro “Email link is invalid or has expired” | Token inválido (link antigo, template alterado ou URL não liberada) | Gerar novo link após corrigir as configurações |
 | Nada acontece ao clicar em “Enviar link” | App em `file://` | Mensagem já orienta; publicar o site |
+| “Error sending recovery email” | Falha do SMTP/Resend (domínio não verificado, porta, chave, remetente) | Ver **Logs → Auth Logs** para a mensagem exata e seguir a secção 5.1 |
 | “Email address not authorized” | SMTP embutido do Supabase (só entrega para o time do projeto) | Configurar SMTP próprio |
 | E-mail não chega para usuários reais | SMTP embutido (2 e-mails/hora, sem garantia) | Configurar SMTP próprio e conferir SPF/DKIM/DMARC |
 | “For security purposes…” / `429` | Limite de 60 s por usuário ou limite de e-mails/hora | Aguardar e revisar **Rate Limits** |
@@ -281,6 +390,36 @@ painel do Supabase.
 
 > Links de recuperação já enviados antes da correção continuam inválidos.
 > É necessário pedir um novo link depois de ajustar o Supabase.
+
+### 5.1. Diagnosticar “Error sending recovery email”
+
+O texto na tela é genérico. A mensagem real fica nos logs:
+
+**Supabase → Logs → Auth Logs** (ou **Logs Explorer** filtrando `auth`)
+https://supabase.com/dashboard/project/xapteyatswdtmuuzqbiu/logs/auth-logs
+
+Procure a linha do pedido `/recover` no horário do erro. O que cada mensagem
+costuma indicar:
+
+| Log do Supabase | Causa | Correção |
+|---|---|---|
+| `535 ... Authentication failed` | Usuário/senha SMTP errados | Username `resend`; Password = API key `re_...` (sem espaços) |
+| `550` / `domain is not verified` / `not allowed to send` | Remetente fora do domínio verificado no Resend | Verificar o domínio no Resend e usar `no-reply@DOMINIO-VERIFICADO` |
+| `You can only send testing emails to your own email address` | Usou `onboarding@resend.dev` | Verificar um domínio próprio |
+| `dial tcp ... i/o timeout` / `connection refused` | Porta/host errados | Host `smtp.resend.com`, porta `465` (ou `587`) |
+| `Invalid \`to\` field` | Destinatário inválido | Testar com um e-mail válido |
+| `email rate limit exceeded` | Limite do Supabase/Resend | Aguardar ou rever **Rate Limits** |
+
+Checklist rápido do Resend/Supabase:
+
+- [ ] **Enable Custom SMTP** ligado e **Save** clicado.
+- [ ] Host `smtp.resend.com`, porta `465`, username `resend`.
+- [ ] Password = API key `re_...` com permissão de envio (sem espaços sobrando).
+- [ ] Sender email exatamente `no-reply@SEU-DOMINIO-VERIFICADO` (só o e-mail,
+      sem “Nome &lt;...&gt;”).
+- [ ] Domínio com estado **Verified** no Resend.
+- [ ] Testar para um e-mail de outra pessoa (Gmail, por exemplo).
+- [ ] Conferir **Resend → Emails** para ver se a mensagem chegou a ser aceita.
 
 ---
 

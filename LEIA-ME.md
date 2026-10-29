@@ -32,8 +32,8 @@ Suba a pasta inteira (`index.html`, `css/` e `js/`) em qualquer hospedagem de si
 
 ## 4. Autenticação
 Antes de publicar, habilite o retorno do link de recuperação de senha:
-1. Em **Authentication → URL Configuration**, ponha o endereço do site em **Site URL** (com `https` e barra no final, ex.: `https://meu-site.netlify.app/`).
-2. Em **Redirect URLs**, adicione o mesmo endereço e a variação com `/**` (ex.: `https://meu-site.netlify.app/**`). Para testar no Live Server, adicione também `http://localhost:5500/**`.
+1. Em **Authentication → URL Configuration**, ponha o endereço do site em **Site URL** (com `https` e barra no final, ex.: `https://agendaprox.netlify.app/`).
+2. Em **Redirect URLs**, adicione o mesmo endereço e a variação com `/**` (ex.: `https://agendaprox.netlify.app/**`). Para testar no Live Server, adicione também `http://localhost:5500/**`.
 3. Em `js/config.js`, preencha `APP_URL` com o endereço publicado. Sem isso, o link do e-mail pode apontar para `localhost` ou para uma URL inválida quando o app é aberto por `file://`.
 4. Em **Authentication → Email Templates → Reset Password**, mantenha o link como `{{ .ConfirmationURL }}`.
 
