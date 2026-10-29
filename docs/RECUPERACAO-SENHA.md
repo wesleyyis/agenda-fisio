@@ -403,7 +403,8 @@ costuma indicar:
 
 | Log do Supabase | Causa | Correção |
 |---|---|---|
-| `535 ... Authentication failed` | Usuário/senha SMTP errados | Username `resend`; Password = API key `re_...` (sem espaços) |
+| `535 ... Authentication failed` | Usuário/senha SMTP errados no Resend | Username `resend`; Password = API key `re_...` (sem espaços) |
+| `535 5.7.8 Username and Password not accepted` | Gmail recusou o login: senha normal em vez de senha de app, senha de app inválida/expirada, usuário sem `@gmail.com` ou 2FA desligada | Ver checklist do Gmail abaixo |
 | `550` / `domain is not verified` / `not allowed to send` | Remetente fora do domínio verificado no Resend | Verificar o domínio no Resend e usar `no-reply@DOMINIO-VERIFICADO` |
 | `You can only send testing emails to your own email address` | Usou `onboarding@resend.dev` | Verificar um domínio próprio |
 | `dial tcp ... i/o timeout` / `connection refused` | Porta/host errados | Host `smtp.resend.com`, porta `465` (ou `587`) |
@@ -420,6 +421,23 @@ Checklist rápido do Resend/Supabase:
 - [ ] Domínio com estado **Verified** no Resend.
 - [ ] Testar para um e-mail de outra pessoa (Gmail, por exemplo).
 - [ ] Conferir **Resend → Emails** para ver se a mensagem chegou a ser aceita.
+
+Checklist rápido do Gmail (`535 5.7.8 Username and Password not accepted`):
+
+- [ ] **Username** é o endereço completo, incluindo `@gmail.com`
+      (não apenas `bshdgcct`). Exemplo errado: `agendapro`; exemplo correto:
+      `agendaprox@gmail.com`.
+- [ ] **Password** é a **senha de app** de 16 letras, **sem espaços** — não é a
+      senha normal da conta Google.
+- [ ] A **verificação em duas etapas** está ativa na conta; sem ela não existe
+      senha de app.
+- [ ] A senha de app foi criada em https://myaccount.google.com/apppasswords
+      para “Mail” e não foi revogada.
+- [ ] **Sender email** é exatamente o mesmo Gmail usado no login.
+- [ ] A conta não está bloqueada/suspensa e não há alerta de segurança em
+      https://myaccount.google.com/security-checkup.
+- [ ] Depois de corrigir, **Save** no Supabase, aguardar ~1 minuto e pedir um
+      **novo** link.
 
 ---
 
