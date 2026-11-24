@@ -402,7 +402,7 @@
   }
 
   /* ---------------- data ---------------- */
-  async function load() {
+  async function loadFromNet() {
     var r = await Promise.all([
       sb.from("patients").select("*").order("name"),
       sb.from("appointments").select("*").order("date").order("time"),
@@ -414,8 +414,243 @@
       a.time = hm(a.time);
       return a;
     });
-    indexAppts();
   }
+  /* Carrega do servidor; sem internet (ou falha de rede), usa o último
+     retrato salvo no IndexedDB pelo PWA. Depois reaplica a fila pendente,
+     para que uma alteração offline não "desapareça" ao voltar a conexão. */
+  async function load() {
+    try {
+      await loadFromNet();
+      offlineHinted = false;
+    } catch (e) {
+      if (isAuthError(e) || !pwaReady() || !window.MinhaAgendaPWA.cache) throw e;
+      var c = null;
+      try {
+        c = await window.MinhaAgendaPWA.cache.load();
+      } catch (e2) {
+        c = null;
+      }
+      if (!c || !c.pts) throw e;
+      S.pts = c.pts;
+      S.ap = c.ap.map(function (a) {
+        a.time = hm(a.time);
+        return a;
+      });
+      if (!offlineHinted) {
+        offlineHinted = true;
+        toast("Sem conexão. Mostrando os últimos dados salvos.", 4500);
+      }
+    }
+    await applyPendingOps();
+    indexAppts();
+    saveSnapshot();
+  }
+
+  /* ---------------- modo offline (fila no IndexedDB) ---------------- */
+  var offlineHinted = false;
+  function pwaReady() {
+    return !!(window.MinhaAgendaPWA && window.MinhaAgendaPWA.queue);
+  }
+  function isOffline() {
+    return !navigator.onLine;
+  }
+  function isNetErr(e) {
+    return /failed to fetch|networkerror|network error|err_internet|err_connection|err_name_not_resolved|load failed|fetch failed|timeout/i.test(
+      errMsg(e),
+    );
+  }
+  function newId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function")
+      return window.crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+  function saveSnapshot() {
+    if (pwaReady() && window.MinhaAgendaPWA.cache)
+      window.MinhaAgendaPWA.cache
+        .save({ pts: S.pts, ap: S.ap })
+        .catch(function () {});
+  }
+  function enqueueOp(op) {
+    if (!pwaReady())
+      return Promise.reject(
+        new Error("Armazenamento offline indisponível neste navegador."),
+      );
+    if (S.user && S.user.id && !op.uid) op.uid = S.user.id;
+    return window.MinhaAgendaPWA.queue.add(op);
+  }
+  /* Valores padrão para registros que só existem na fila (nunca vieram do
+     servidor ainda). Evitam campos vazios na tela e em cálculos. */
+  function pendingPatient(p) {
+    return Object.assign(
+      {
+        phone: "",
+        fee: 0,
+        total_sessions: 10,
+        default_time: "15:00",
+        notes: "",
+        created_at: new Date().toISOString(),
+      },
+      p || {},
+    );
+  }
+  function pendingAppt(a) {
+    return Object.assign(
+      {
+        duration: 50,
+        kind: "Sessão",
+        reminder_min: 30,
+        status: "agendado",
+        note: "",
+        created_at: new Date().toISOString(),
+      },
+      a || {},
+    );
+  }
+  /* Reaplica a fila sobre os dados recém-carregados. Necessário porque o
+     servidor ainda não conhece as alterações feitas offline. */
+  async function applyPendingOps() {
+    if (!pwaReady()) return;
+    var ops = [];
+    try {
+      ops = await window.MinhaAgendaPWA.queue.all();
+    } catch (e) {
+      return;
+    }
+    if (!ops.length) return;
+    var uid = S.user && S.user.id;
+    if (uid)
+      ops = ops.filter(function (op) {
+        return !op.uid || op.uid === uid;
+      });
+    if (!ops.length) return;
+    var pts = {},
+      aps = {};
+    S.pts.forEach(function (p) {
+      pts[p.id] = p;
+    });
+    S.ap.forEach(function (a) {
+      aps[a.id] = a;
+    });
+    ops.forEach(function (op) {
+      if (!op || !op.table || !op.method) return;
+      var id = (op.match && op.match.id) || (op.body && op.body.id);
+      if (!id) return;
+      if (op.table === "patients") {
+        if (op.method === "insert") {
+          pts[id] = pendingPatient(op.body);
+        } else if (op.method === "update") {
+          if (pts[id]) Object.assign(pts[id], op.body);
+        } else if (op.method === "delete") {
+          delete pts[id];
+          Object.keys(aps).forEach(function (k) {
+            if (aps[k].patient_id === id) delete aps[k];
+          });
+        }
+      } else if (op.table === "appointments") {
+        if (op.method === "insert") {
+          aps[id] = pendingAppt(op.body);
+        } else if (op.method === "update") {
+          if (aps[id]) Object.assign(aps[id], op.body);
+        } else if (op.method === "delete") {
+          delete aps[id];
+        }
+      }
+    });
+    S.pts = Object.keys(pts)
+      .map(function (k) {
+        return pts[k];
+      })
+      .sort(function (a, b) {
+        return (a.name || "").localeCompare(b.name || "");
+      });
+    S.ap = Object.keys(aps).map(function (k) {
+      var a = aps[k];
+      a.time = hm(a.time);
+      return a;
+    });
+    S.ap.sort(cmpA);
+  }
+  /* As três funções abaixo devolvem null quando a operação foi para a fila
+     offline (sem internet ou falha de rede). */
+  async function dbInsert(table, row) {
+    if (isOffline()) {
+      await enqueueOp({ table: table, method: "insert", body: row });
+      return null;
+    }
+    var r = await sb.from(table).insert(row);
+    if (r && r.error) {
+      if (!isNetErr(r.error)) throw r.error;
+      await enqueueOp({ table: table, method: "insert", body: row });
+      return null;
+    }
+    return r;
+  }
+  async function dbUpdate(table, body, id) {
+    if (isOffline()) {
+      await enqueueOp({
+        table: table,
+        method: "update",
+        body: body,
+        match: { id: id },
+      });
+      return null;
+    }
+    var r = await sb.from(table).update(body).eq("id", id);
+    if (r && r.error) {
+      if (!isNetErr(r.error)) throw r.error;
+      await enqueueOp({
+        table: table,
+        method: "update",
+        body: body,
+        match: { id: id },
+      });
+      return null;
+    }
+    return r;
+  }
+  async function dbDelete(table, id) {
+    if (isOffline()) {
+      await enqueueOp({ table: table, method: "delete", match: { id: id } });
+      return null;
+    }
+    var r = await sb.from(table).delete().eq("id", id);
+    if (r && r.error) {
+      if (!isNetErr(r.error)) throw r.error;
+      await enqueueOp({ table: table, method: "delete", match: { id: id } });
+      return null;
+    }
+    return r;
+  }
+  /* Atualiza um atendimento (online ou na fila) e reflete na tela. */
+  async function updateAppt(id, body, okMsg) {
+    try {
+      var r = await dbUpdate("appointments", body, id);
+      if (!r) {
+        var a = getA(id);
+        if (a) Object.assign(a, body);
+        indexAppts();
+        saveSnapshot();
+        render();
+        if (okMsg) toast(okMsg);
+        return { offline: true };
+      }
+      await load();
+      render();
+      if (okMsg) toast(okMsg);
+      return r;
+    } catch (e) {
+      if (isAuthError(e)) {
+        onAuthExpired();
+        return null;
+      }
+      toast("Erro: " + errMsg(e), 4000);
+      return null;
+    }
+  }
+
   async function run(p, okMsg) {
     try {
       var r = await p;
@@ -729,6 +964,36 @@
       "Você precisará entrar de novo neste aparelho.",
       "Sair",
       async function () {
+        var pending = 0;
+        if (window.MinhaAgendaPWA && window.MinhaAgendaPWA.queue) {
+          try {
+            pending = await window.MinhaAgendaPWA.queue.count(
+              S.user && S.user.id,
+            );
+          } catch (e) {
+            pending = 0;
+          }
+        }
+        if (pending) {
+          toast(
+            "Você tem " +
+              pending +
+              " alteração(ões) ainda não sincronizada(s). Conecte-se e aguarde a sincronização antes de sair.",
+            5500,
+          );
+          return;
+        }
+        if (window.MinhaAgendaPWA) {
+          try {
+            await window.MinhaAgendaPWA.unsubscribe();
+          } catch (e) {}
+          try {
+            if (window.MinhaAgendaPWA.cache.clearSession)
+              await window.MinhaAgendaPWA.cache.clearSession();
+            else
+              await window.MinhaAgendaPWA.cache.save({ pts: [], ap: [] });
+          } catch (e) {}
+        }
         await sb.auth.signOut();
       },
     );
@@ -782,6 +1047,15 @@
     started = true;
     route();
     if (!S.name) askName(true);
+    /* Push: se a permissão já foi concedida, garante a inscrição deste aparelho. */
+    if (window.MinhaAgendaPWA) {
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted"
+      )
+        window.MinhaAgendaPWA.subscribe(S.user.id).catch(function () {});
+      window.MinhaAgendaPWA.replay();
+    }
   }
 
   /* ---------------- perfil (nome de exibição) ---------------- */
@@ -1394,11 +1668,24 @@
         "Todo o histórico e os atendimentos deste paciente serão apagados. Esta ação não pode ser desfeita.",
         "Excluir paciente",
         async function () {
-          var r = await sb.from("patients").delete().eq("id", p.id);
-          if (r.error) throw r.error;
-          await load();
+          var r = await dbDelete("patients", p.id);
+          if (!r) {
+            S.pts = S.pts.filter(function (x) {
+              return x.id !== p.id;
+            });
+            S.ap = S.ap.filter(function (a) {
+              return a.patient_id !== p.id;
+            });
+            indexAppts();
+            saveSnapshot();
+          }
+          if (r) await load();
           go("pacientes");
-          toast("Paciente excluído.");
+          toast(
+            r
+              ? "Paciente excluído."
+              : "Paciente excluído. Vai sincronizar quando a internet voltar.",
+          );
         },
       );
     };
@@ -1532,48 +1819,106 @@
           notes: $("pf-o").value.trim().slice(0, 500),
         };
         if (isNew) {
-          var r = await sb.from("patients").insert(row).select().single();
-          if (r.error) throw r.error;
+          row.id = newId();
+          var r = await dbInsert("patients", row);
+          var off = !r;
           var dt = $("pf-d").value;
+          var r2 = null;
           if (dt) {
-            var r2 = await sb
-              .from("appointments")
-              .insert({
-                patient_id: r.data.id,
-                date: dt,
-                time: hr,
-                duration: 50,
-                kind: "Sessão",
-                reminder_min: 30,
-              });
-            if (r2.error) {
+            var apRow = {
+              id: newId(),
+              patient_id: row.id,
+              date: dt,
+              time: hr,
+              duration: 50,
+              kind: "Sessão",
+              reminder_min: 30,
+              status: "agendado",
+              note: "",
+            };
+            try {
+              r2 = await dbInsert("appointments", apRow);
+            } catch (e2) {
               /* Desfaz o paciente para não deixar cadastro pela metade se o 1º atendimento falhar. */
-              await sb.from("patients").delete().eq("id", r.data.id);
-              throw r2.error;
+              await sb.from("patients").delete().eq("id", row.id);
+              throw e2;
+            }
+            if (!r2) {
+              off = true;
+              S.ap.push(apRow);
             }
             S.day = dt;
             S.cm = new Date(parse(dt).getFullYear(), parse(dt).getMonth(), 1);
           }
-          await load();
-          closeModal();
-          go("paciente", r.data.id);
-          toast("Paciente cadastrado.");
-        } else {
-          var r3 = await sb.from("patients").update(row).eq("id", p.id);
-          if (r3.error) throw r3.error;
-          if (hr !== hm(p.default_time || "")) {
-            var r4 = await sb
-              .from("appointments")
-              .update({ time: hr })
-              .eq("patient_id", p.id)
-              .eq("status", "agendado")
-              .gte("date", todayISO());
-            if (r4.error) throw r4.error;
+          if (off) {
+            S.pts.push(
+              Object.assign(
+                { created_at: new Date().toISOString() },
+                row,
+              ),
+            );
+            indexAppts();
+            saveSnapshot();
+          } else {
+            await load();
           }
-          await load();
+          closeModal();
+          go("paciente", row.id);
+          toast(
+            off
+              ? "Paciente salvo no aparelho. Sincroniza quando a internet voltar."
+              : "Paciente cadastrado.",
+          );
+        } else {
+          var r3 = await dbUpdate("patients", row, p.id);
+          var off3 = !r3;
+          if (hr !== hm(p.default_time || "")) {
+            if (off3) {
+              var fut = S.ap.filter(function (a) {
+                return (
+                  a.patient_id === p.id &&
+                  a.status === "agendado" &&
+                  a.date >= todayISO()
+                );
+              });
+              for (var fi = 0; fi < fut.length; fi++) {
+                fut[fi].time = hr;
+                await enqueueOp({
+                  table: "appointments",
+                  method: "update",
+                  body: { time: hr },
+                  match: { id: fut[fi].id },
+                });
+              }
+            } else {
+              var r4 = await sb
+                .from("appointments")
+                .update({ time: hr })
+                .eq("patient_id", p.id)
+                .eq("status", "agendado")
+                .gte("date", todayISO());
+              if (r4.error) throw r4.error;
+            }
+          }
+          if (off3) {
+            for (var pi = 0; pi < S.pts.length; pi++) {
+              if (S.pts[pi].id === p.id) {
+                Object.assign(S.pts[pi], row);
+                break;
+              }
+            }
+            indexAppts();
+            saveSnapshot();
+          } else {
+            await load();
+          }
           closeModal();
           render();
-          toast("Paciente atualizado.");
+          toast(
+            off3
+              ? "Alterações salvas no aparelho. Sincroniza quando a internet voltar."
+              : "Paciente atualizado.",
+          );
         }
       } catch (e) {
         bad("Erro ao salvar: " + errMsg(e));
@@ -1729,20 +2074,40 @@
       };
       this.disabled = true;
       try {
+        var aid = isNew ? newId() : a.id;
+        row.id = aid;
         var r = isNew
-          ? await sb.from("appointments").insert(row)
-          : await sb.from("appointments").update(row).eq("id", a.id);
-        if (r.error) throw r.error;
-        await load();
+          ? await dbInsert("appointments", row)
+          : await dbUpdate("appointments", row, aid);
+        var off = !r;
+        if (off) {
+          if (isNew)
+            S.ap.push(
+              Object.assign(
+                { status: "agendado", created_at: new Date().toISOString() },
+                row,
+              ),
+            );
+          else {
+            var cur = getA(aid);
+            if (cur) Object.assign(cur, row);
+          }
+          indexAppts();
+          saveSnapshot();
+        } else {
+          await load();
+        }
         S.day = d;
         S.cm = new Date(parse(d).getFullYear(), parse(d).getMonth(), 1);
         if (a && a.id) delete S.notified[a.id];
         closeModal();
         render();
         toast(
-          isNew
-            ? "Atendimento salvo. Lembrete programado."
-            : "Atendimento atualizado.",
+          off
+            ? "Atendimento salvo no aparelho. Sincroniza quando a internet voltar."
+            : isNew
+              ? "Atendimento salvo. Lembrete programado."
+              : "Atendimento atualizado.",
         );
       } catch (e) {
         er.textContent = "Erro ao salvar: " + errMsg(e);
@@ -1763,11 +2128,22 @@
       "O registro será removido definitivamente, inclusive do histórico.",
       "Excluir",
       async function () {
-        var r = await sb.from("appointments").delete().eq("id", a.id);
-        if (r.error) throw r.error;
-        await load();
+        var r = await dbDelete("appointments", a.id);
+        if (!r) {
+          S.ap = S.ap.filter(function (x) {
+            return x.id !== a.id;
+          });
+          indexAppts();
+          saveSnapshot();
+        } else {
+          await load();
+        }
         render();
-        toast("Atendimento excluído.");
+        toast(
+          r
+            ? "Atendimento excluído."
+            : "Atendimento excluído. Vai sincronizar quando a internet voltar.",
+        );
       },
     );
   }
@@ -1826,10 +2202,7 @@
       else if (k === "del") delAppt(a);
       else if (k === "undo") {
         closeModal();
-        run(
-          sb.from("appointments").update({ status: "agendado" }).eq("id", id),
-          "Atendimento reaberto.",
-        );
+        updateAppt(id, { status: "agendado" }, "Atendimento reaberto.");
       } else reasonForm(a, k);
     };
   }
@@ -1849,9 +2222,7 @@
     doneBusy[id] = 1;
     var n = okc(p.id) + 1;
     try {
-      var r = await run(
-        sb.from("appointments").update({ status: "realizado" }).eq("id", id),
-      );
+      var r = await updateAppt(id, { status: "realizado" });
       if (r)
         toast(
           p.name +
@@ -1904,6 +2275,7 @@
         er = $("rs-err");
       this.disabled = true;
       try {
+        var pending = false;
         if (rem) {
           var d = $("rs-d").value,
             t = $("rs-h").value;
@@ -1921,37 +2293,63 @@
             t +
             "." +
             (m ? " Motivo: " + m : "");
-          var r1 = await sb
-            .from("appointments")
-            .insert({
-              patient_id: a.patient_id,
-              date: d,
-              time: t,
-              duration: a.duration,
-              kind: a.kind,
-              reminder_min: a.reminder_min,
-              note: a.note,
-            });
-          if (r1.error) throw r1.error;
-          var r2 = await sb
-            .from("appointments")
-            .update({ status: "remarcado", note: note.slice(0, 500) })
-            .eq("id", a.id);
-          if (r2.error) throw r2.error;
+          var newAppt = {
+            id: newId(),
+            patient_id: a.patient_id,
+            date: d,
+            time: t,
+            duration: a.duration,
+            kind: a.kind,
+            reminder_min: a.reminder_min,
+            note: a.note,
+            status: "agendado",
+          };
+          var r1 = await dbInsert("appointments", newAppt);
+          if (!r1) {
+            pending = true;
+            S.ap.push(newAppt);
+          }
+          var r2 = await dbUpdate(
+            "appointments",
+            { status: "remarcado", note: note.slice(0, 500) },
+            a.id,
+          );
+          if (!r2) {
+            pending = true;
+            Object.assign(a, { status: "remarcado", note: note.slice(0, 500) });
+          }
           S.day = d;
           S.cm = new Date(parse(d).getFullYear(), parse(d).getMonth(), 1);
         } else {
           var note2 = keep + "Cancelada." + (m ? " Motivo: " + m : "");
-          var r3 = await sb
-            .from("appointments")
-            .update({ status: "cancelado", note: note2.slice(0, 500) })
-            .eq("id", a.id);
-          if (r3.error) throw r3.error;
+          var r3 = await dbUpdate(
+            "appointments",
+            { status: "cancelado", note: note2.slice(0, 500) },
+            a.id,
+          );
+          if (!r3) {
+            pending = true;
+            Object.assign(a, {
+              status: "cancelado",
+              note: note2.slice(0, 500),
+            });
+          }
         }
-        await load();
+        if (pending) {
+          indexAppts();
+          saveSnapshot();
+        } else {
+          await load();
+        }
         closeModal();
         render();
-        toast(rem ? "Atendimento remarcado." : "Atendimento cancelado.");
+        toast(
+          pending
+            ? "Alteração salva no aparelho. Sincroniza quando a internet voltar."
+            : rem
+              ? "Atendimento remarcado."
+              : "Atendimento cancelado.",
+        );
       } catch (e) {
         er.textContent = "Erro: " + errMsg(e);
         er.hidden = false;
@@ -1969,17 +2367,32 @@
       );
       return;
     }
-    if (Notification.permission === "granted") {
-      toast("Avisos ativados. Eles funcionam com o site aberto.", 3500);
-      return;
-    }
     if (Notification.permission === "denied") {
-      toast("Notificações bloqueadas nas configurações do navegador.", 4000);
+      toast(
+        "Notificações bloqueadas nas configurações do navegador. Libere o acesso nas permissões do site.",
+        4500,
+      );
       return;
     }
-    Notification.requestPermission().then(function (p) {
-      toast(p === "granted" ? "Avisos ativados." : "Permissão não concedida.");
-    });
+    function granted(p) {
+      if (p !== "granted") {
+        toast("Permissão não concedida.", 3500);
+        return;
+      }
+      toast(
+        "Avisos ativados. Você receberá lembretes mesmo com a tela apagada.",
+        4000,
+      );
+      if (window.MinhaAgendaPWA && S.user)
+        window.MinhaAgendaPWA.subscribe(S.user.id).catch(function (e) {
+          console.warn("[PWA] Falha ao assinar push:", e);
+        });
+    }
+    if (Notification.permission === "granted") {
+      granted("granted");
+      return;
+    }
+    Notification.requestPermission().then(granted);
   }
   function checkRem() {
     if (!started) return;
@@ -2009,10 +2422,19 @@
             (st - nm) +
             " min.";
         toast("🔔 " + msg, 8000);
-        try {
-          if ("Notification" in window && Notification.permission === "granted")
-            new Notification("Minha Agenda", { body: msg });
-        } catch (e) {}
+        if (window.MinhaAgendaPWA && window.MinhaAgendaPWA.notifyLocal) {
+          window.MinhaAgendaPWA
+            .notifyLocal("Minha Agenda", msg)
+            .catch(function () {});
+        } else {
+          try {
+            if (
+              "Notification" in window &&
+              Notification.permission === "granted"
+            )
+              new Notification("Minha Agenda", { body: msg });
+          } catch (e) {}
+        }
       }
     });
   }
@@ -2031,6 +2453,35 @@
       .catch(function (e) {
         if (isAuthError(e)) onAuthExpired();
       });
+  });
+
+  /* ---------------- eventos do PWA (offline/sincronização) ---------------- */
+  window.addEventListener("pwa:synced", function (e) {
+    var d = (e && e.detail) || {};
+    if (!started || !d.done) return;
+    load()
+      .then(function () {
+        if (!$("modal").classList.contains("on")) render();
+        toast(
+          d.pending
+            ? "Sincronizado. " + d.pending + " alteração(ões) ainda pendente(s)."
+            : "Alterações sincronizadas com o servidor.",
+          3500,
+        );
+      })
+      .catch(function () {});
+  });
+  window.addEventListener("offline", function () {
+    if (!started) return;
+    toast(
+      "Sem conexão. Continue trabalhando: as alterações serão sincronizadas depois.",
+      4500,
+    );
+  });
+  window.addEventListener("online", function () {
+    offlineHinted = false;
+    if (!started) return;
+    toast("Conexão restabelecida. Sincronizando…", 3000);
   });
 
   /* ---------------- delegação de cliques ---------------- */
@@ -2121,6 +2572,12 @@
         persistSession: true,
       },
     });
+    if (window.MinhaAgendaPWA && window.MinhaAgendaPWA.configure)
+      window.MinhaAgendaPWA.configure({
+        client: sb,
+        url: SUPABASE_URL,
+        key: SUPABASE_KEY,
+      });
     authMode("login");
     if (linkMsg) amsg(linkMsg);
     sb.auth.onAuthStateChange(function (ev, session) {

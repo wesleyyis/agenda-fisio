@@ -52,4 +52,14 @@ O nome informado no cadastro ("Como você gostaria de ser chamado?") fica salvo 
 - **Android (Chrome):** menu ⋮ → Instalar app / Adicionar à tela inicial.
 
 ## Sobre os lembretes
-Os avisos funcionam **com o app aberto** (ou aberto em segundo plano): tela com aviso, e notificação do navegador se você tocar no sino 🔔 e permitir. Com o app totalmente fechado, o navegador não consegue disparar avisos sozinho. Para isso seria preciso um serviço de push ou um app nativo.
+Com o app aberto, os avisos aparecem na tela e como notificação do navegador (toque no sino 🔔 e permita).
+
+Com o app fechado ou a tela apagada, é preciso configurar o **Web Push** (PWA + VAPID + função no Supabase). O passo a passo completo está em **docs/PWA.md**. Enquanto `VAPID_PUBLIC_KEY` estiver vazio em `js/config.js`, apenas os lembretes com o app aberto funcionam.
+
+## Modo offline (PWA)
+O app pode ser instalado na tela inicial e continua funcionando sem internet:
+- os dados carregados ficam salvos no aparelho (IndexedDB);
+- cadastros, edições e exclusões feitos offline entram numa fila;
+- ao voltar a conexão, a fila é sincronizada automaticamente (inclusive em segundo plano no Android/Chrome).
+
+No iPhone, a sincronização acontece quando o app volta a abrir (o Safari não tem Background Sync). Detalhes e limitações: **docs/PWA.md**.

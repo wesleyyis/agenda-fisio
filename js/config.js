@@ -15,4 +15,11 @@ var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
      Authentication → URL Configuration (Site URL e Redirect URLs).
      Veja o passo a passo em docs/RECUPERACAO-SENHA.md. */
 var APP_URL = "https://agendaprox.netlify.app/";
+
+/* ===== WEB PUSH (VAPID) =====
+   Chave PÚBLICA gerada por supabase/functions/send-push/gerar-chaves.ts.
+   Pode ficar exposta no frontend; a chave privada fica só nos Secrets do Supabase.
+   Deixe vazia ("") enquanto o push não estiver configurado: o app continua
+   funcionando e os lembretes locais (com o site aberto) seguem ativos. */
+var VAPID_PUBLIC_KEY = "";
 /* ======================================================== */
