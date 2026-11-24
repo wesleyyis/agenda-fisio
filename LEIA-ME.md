@@ -56,6 +56,8 @@ Com o app aberto, os avisos aparecem na tela e como notificação do navegador (
 
 Com o app fechado ou a tela apagada, é preciso configurar o **Web Push** (PWA + VAPID + função no Supabase). O passo a passo completo está em **docs/PWA.md**. Enquanto `VAPID_PUBLIC_KEY` estiver vazio em `js/config.js`, apenas os lembretes com o app aberto funcionam.
 
+**Guia pronto para quem vai configurar:** `docs/ATIVACAO.md` (copie o arquivo e siga do início ao fim).
+
 ## Modo offline (PWA)
 O app pode ser instalado na tela inicial e continua funcionando sem internet:
 - os dados carregados ficam salvos no aparelho (IndexedDB);

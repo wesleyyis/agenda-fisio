@@ -4,6 +4,9 @@ Este documento explica o que foi implementado no **Minha Agenda**, como ativar o
 push no Supabase e como testar. Tudo continua em HTML/CSS/JS puro (sem build e
 sem bibliotecas novas no frontend).
 
+> Para um passo a passo pronto para a pessoa que vai fazer a configuração, use
+> **`docs/ATIVACAO.md`**.
+
 ## Arquivos envolvidos
 
 | Arquivo | Papel |
